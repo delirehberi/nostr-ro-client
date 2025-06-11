@@ -8,6 +8,7 @@ export default {
 
     // Nostr relay endpoints (public relays, can be adjusted)
     const relays = [
+      "wss://relay.emre.xyz",
       "wss://relay.nostr.band",
       "wss://relay.damus.io",
       "wss://nostr-pub.wellorder.net"
@@ -383,11 +384,41 @@ export default {
               font-size: 0.98em;
             }
           }
+            header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin: 1em 0;
+  line-height: 2.5em;
+}
+  header .main {
+  font-size: 1.5rem;
+}
+header  a {
+  border-bottom: 3px solid var(--maincolor);
+  color: black !important;
+  text-decoration: none;
+}
+  header a:hover{
+    color: red !important;
+  }
         </style>
       </head>
       <body>
         <div class="container">
-          <h1>My Notes on Nostr</h1>
+ <header>
+ <div class="main">
+ <a href="https://emre.xyz/">My Notes on Nostr | @delirehberi</a>
+ </div>
+ <nav>
+ <a href="https://emre.xyz">blog</a>
+<a href="https://gist.github.com/delirehberi">gist</a>
+<a href="https://nostr.emre.xyz">nostr</a>
+<a href="https://emre.xyz/til">til</a>
+<a href="https://emre.xyz/about">me</a>
+<a href="https://emre.xyz/subscribe">subscribe</a>
+<a href="https://emre.xyz/resume.pdf">resume</a></nav></header>         
+<main>
           ${renderPosts(pagedEvents)} 
 
           <p style="margin: 8px 0 0 0; font-size: 12px; color: var(--meta); text-align:center;">
@@ -399,6 +430,7 @@ export default {
             </a>
           </p>
         </div>
+        </main>
       </body>
       </html>
     `;
