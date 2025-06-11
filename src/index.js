@@ -223,13 +223,37 @@ export default {
 
         return replaced;
       }
-
-      return posts.map(e => `
+      return posts.map(e => {
+        // Find parent event id (thread or reply)
+        let parentId = null;
+        console.dir(e);
+        if (Array.isArray(e.tags)) {
+          // Look for 'e' tag with a value that is not this event's id
+          // NIP-10: The first 'e' tag is usually the root, the last is the immediate parent
+          // https://github.com/nostr-protocol/nips/blob/master/10.md
+          const eTags = e.tags.filter(tag => tag[0] === 'e' && tag[1] && tag[1] !== e.id);
+          if (eTags.length > 0) {
+            // Use the last 'e' tag as the parent (immediate reply target)
+            parentId = eTags[eTags.length - 1][1];
+          }
+        }
+        let parentLink = '';
+        if (parentId) {
+          // Use coracle.social/notes/ for event links
+          parentLink = `<div class="parent-link" style="font-size:0.95em;margin-bottom:0.3em;">
+            <a href="https://coracle.social/notes/${parentId}" target="_blank" rel="noopener" style="color:var(--link);text-decoration:underline;">
+              Replying to event: ${parentId.slice(0, 8)}...${parentId.slice(-4)}
+            </a>
+          </div>`;
+        }
+        return `
         <div class="post">
+          ${parentLink}
           <div class="content">${linkifyAndEmbed(escapeHtml(e.content))}</div>
           <div class="meta">${new Date(e.created_at * 1000).toLocaleString()}</div>
         </div>
-      `).join("");
+        `;
+      }).join("");
     }
 
     // Pagination controls
