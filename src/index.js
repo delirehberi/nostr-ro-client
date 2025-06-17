@@ -246,10 +246,13 @@ export default {
             </a>
           </div>`;
         }
+        // Replace newlines with <br> in content before linkifyAndEmbed
+        let cont = escapeHtml(e.content);
+        const contentWithBr = cont.replace(/\n/g, '<br>');
         return `
         <div class="post">
           ${parentLink}
-          <div class="content">${linkifyAndEmbed(escapeHtml(e.content))}</div>
+          <div class="content">${linkifyAndEmbed(contentWithBr)}</div>
           <div class="meta">${new Date(e.created_at * 1000).toLocaleString()}</div>
         </div>
         `;
