@@ -151,28 +151,29 @@ export default {
         //    We'll match nostr:<bech32> and extract the bech32 part
         const nostrUriRegex = /\bnostr:((?:npub|note|nevent|nprofile|naddr|nrelay)1[0-9a-z]{20,})\b/g;
 
+
         // Replace hex event ids with coracle.social links
-        content = content.replace(hexEventRegex, (match) => {
+        /*content = content.replace(hexEventRegex, (match) => {
           const short = shortifyNpub(match);
-          return `<a href="https://coracle.social/e/${match}" target="_blank" rel="noopener">[event:${short}]</a>`;
-        });
+          return `<a href="https://njump.me/${match}" target="_blank" rel="noopener">[event:${short}]</a>`;
+        });*/
 
         // Replace bech32 event ids (npub, note, nevent, etc.) with coracle.social links
         content = content.replace(bech32EventRegex, (match) => {
           // Determine type for link
           if (match.startsWith('npub1')) {
             const short = shortifyNpub(match);
-            return `<a href="https://coracle.social/p/${match}" target="_blank" rel="noopener">[npub:${short}]</a>`;
-          } else if (match.startsWith('note1') || match.startsWith('nevent1')) {
+            return `<a href="https://njump.me/${match}" target="_blank" rel="noopener">[npub:${short}]</a>`;
+          } else if ((match.startsWith('note1') || match.startsWith('nevent1'))){
             const short = shortifyNpub(match);
-            return `<a href="https://coracle.social/notes/${match}" target="_blank" rel="noopener">[event:${short}]</a>`;
+            return `<a href="https://njump.me/${match}" target="_blank" rel="noopener">[event:${short}]</a>`;
           } else if (match.startsWith('nprofile1')) {
             const short = shortifyNpub(match);
-            return `<a href="https://coracle.social/people/${match}" target="_blank" rel="noopener">[profile:${short}]</a>`;
+            return `<a href="https://njump.me/${match}" target="_blank" rel="noopener">[profile:${short}]</a>`;
           } else {
             // fallback
             const short = shortifyNpub(match);
-            return `<a href="https://coracle.social/${match}" target="_blank" rel="noopener">[nostr:${short}]</a>`;
+            return `<a href="https://njump.me/${match}" target="_blank" rel="noopener">[nostr:${short}]</a>`;
           }
         });
 
@@ -180,17 +181,17 @@ export default {
         content = content.replace(nostrUriRegex, (full, bech32) => {
           if (bech32.startsWith('npub1')) {
             const short = shortifyNpub(bech32);
-            return `<a href="https://coracle.social/p/${bech32}" target="_blank" rel="noopener">[npub:${short}]</a>`;
+            return `<a href="https://njump.me/${full}" target="_blank" rel="noopener">[npub:${short}]</a>`;
           } else if (bech32.startsWith('note1') || bech32.startsWith('nevent1')) {
             const short = shortifyNpub(bech32);
-            return `<a href="https://coracle.social/notes/${bech32}" target="_blank" rel="noopener">[event:${short}]</a>`;
+            return `<a href="https://njump.me/${full}" target="_blank" rel="noopener">[event:${short}]</a>`;
           } else if (bech32.startsWith('nprofile1')) {
             const short = shortifyNpub(bech32);
-            return `<a href="https://coracle.social/people/${bech32}" target="_blank" rel="noopener">[profile:${short}]</a>`;
+            return `<a href="https://njump.me/${full}" target="_blank" rel="noopener">[profile:${short}]</a>`;
           } else {
             // fallback
             const short = shortifyNpub(bech32);
-            return `<a href="https://coracle.social/${bech32}" target="_blank" rel="noopener">[nostr:${short}]</a>`;
+            return `<a href="https://njump.me/${full}" target="_blank" rel="noopener">[nostr:${short}]</a>`;
           }
         });
 
@@ -214,7 +215,12 @@ export default {
             </div>`;
           } else {
             // Other links, clickable
-            return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+            const imgRegex = /(https?:\/\/[^\s<]+?\.(?:jpe?g|png|gif|bmp|webp))(?=[^\w.]|$)/g;
+            if(imgRegex.test(content)) {
+              return `<img style="max-width:100%;border:1px solid #ccc;" src="${escapeHtml(url)}" />`;
+            }else{
+              return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+            }
           }
         });
 
@@ -226,7 +232,6 @@ export default {
       return posts.map(e => {
         // Find parent event id (thread or reply)
         let parentId = null;
-        console.dir(e);
         if (Array.isArray(e.tags)) {
           // Look for 'e' tag with a value that is not this event's id
           // NIP-10: The first 'e' tag is usually the root, the last is the immediate parent
@@ -241,7 +246,7 @@ export default {
         if (parentId) {
           // Use coracle.social/notes/ for event links
           parentLink = `<div class="parent-link" style="font-size:0.95em;margin-bottom:0.3em;">
-            <a href="https://coracle.social/notes/${parentId}" target="_blank" rel="noopener" style="color:var(--link);text-decoration:underline;">
+            <a href="https://njump.me/${parentId}" target="_blank" rel="noopener" style="color:var(--link);text-decoration:underline;">
               Replying to event: ${parentId.slice(0, 8)}...${parentId.slice(-4)}
             </a>
           </div>`;
@@ -254,6 +259,7 @@ export default {
           ${parentLink}
           <div class="content">${linkifyAndEmbed(contentWithBr)}</div>
           <div class="meta">${new Date(e.created_at * 1000).toLocaleString()}</div>
+          <div class="share"><a href="https://njump.me/${e.id}" target="_blank">share</a></div>
         </div>
         `;
       }).join("");
@@ -345,6 +351,11 @@ export default {
             font-size: 0.93em;
             margin-top: 0.2em;
           }
+          .share {
+            color: var(--text);
+            font-size: 0.9em;
+            margin-top: 0.5em;
+          }
           .pagination {
             margin: 2em 0 0 0;
             text-align: center;
@@ -385,7 +396,7 @@ export default {
           }
           /* Make all links red, including those in .content */
           a, .content a {
-            color: red !important;
+            color: var(--link) !important;
           }
           @media (max-width: 700px) {
             .container {
@@ -423,11 +434,11 @@ export default {
 }
 header  a {
   border-bottom: 3px solid var(--maincolor);
-  color: black !important;
+  color: var(--text); 
   text-decoration: none;
 }
   header a:hover{
-    color: red !important;
+    color: var(--link);
   }
         </style>
       </head>
@@ -451,7 +462,7 @@ header  a {
           <p style="margin: 8px 0 0 0; font-size: 12px; color: var(--meta); text-align:center;">
             Want to see all my posts and follow me?<br>
             You can use 
-            <a href="https://coracle.social/people/46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a" 
+            <a href="https://njump.me/npub1gmeu0wenescpjpymwmwgnkaedc6vy3aamf5tdtvxxf5z0yll3gdqatwl3v" 
                target="_blank" rel="noopener" style="color:var(--link);word-break:break-all;">
               [delirehberi@emre.xyz]
             </a>
