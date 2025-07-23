@@ -53,7 +53,6 @@ export default {
       const [username, domain] = nip05.split("@");
       if (!username || !domain) return null;
       try {
-        console.dir(`https://${domain}/.well-known/nostr.json?name=${username}`)
         const resp = await fetch(`https://${domain}/.well-known/nostr.json?name=${username}`);
         if (!resp.ok) return PUBKEY;
         const data = await resp.json(); 
@@ -144,7 +143,7 @@ export default {
         //    The minimum length for a bech32 Nostr id is about 60 chars, but can be longer.
         //    We'll match npub1, note1, nevent1, nprofile1, naddr1, nrelay1, etc.
         //    See: https://github.com/nostr-protocol/nips/blob/master/19.md#bech32-encoded-entities
-        const bech32EventRegex = /\b((?:npub|note|nevent|nprofile|naddr|nrelay)1[0-9a-z]{20,})\b/g;
+        const bech32EventRegex = /(?<!^https:\/\/)\b((?:npub|note|nevent|nprofile|naddr|nrelay)1[0-9a-z]{20,})\b/g;
 
         // 3. NIP-21 URI scheme: nostr:<bech32>
         //    Example: nostr:nevent1qqs2sd...
