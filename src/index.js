@@ -10,7 +10,7 @@ const app = new Hono();
 
 // Helper to fetch events from a relay
 async function fetchFromRelay(relayUrl, filter) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     let ws = new WebSocket(relayUrl);
     let results = [];
     let timeout = setTimeout(() => {
@@ -78,6 +78,15 @@ function extractMentionedPubkeys(content) {
 }
 
 app.get('/', async (c) => {
+  const invalidate = new URL(c.req.url).searchParams.get('cache') === 'invalidate';
+
+  if (!invalidate) {
+    const cached = await c.env.CACHE.get('homepage');
+    if (cached) {
+      return c.html(cached, { headers: { 'Cache-Control': 'public, max-age=60' } });
+    }
+  }
+
   const HANDLE = c.env.HANDLE;
   const PUBKEY = c.env.PUBKEY;
 
@@ -208,11 +217,14 @@ app.get('/', async (c) => {
     }
   }
 
-  return c.html(renderHomePage(mainEventIds, eventMap, profileMap), {
-    headers: {
-      'Cache-Control': 'public, max-age=60'
-    }
-  });
+  const htmlString = String(renderHomePage(mainEventIds, eventMap, profileMap));
+  await c.env.CACHE.put('homepage', htmlString);
+  return c.html(htmlString, { headers: { 'Cache-Control': 'public, max-age=60' } });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_event, env) {
+    await env.CACHE.delete('homepage');
+  }
+};

@@ -33,9 +33,18 @@
 	 * Environment Variables
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
- , "vars": { 
+ , "vars": {
       "HANDLE": "delirehberi@emre.xyz" ,
       "PUBKEY": "46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a"
+ },
+ "kv_namespaces": [
+   {
+     "binding": "CACHE",
+     "id": "50233586981a41f994788f0a69681308"
+   }
+ ],
+ "triggers": {
+   "crons": ["0 * * * *"]
  }
 	/**
 	 * Note: Use secrets to store sensitive data.
