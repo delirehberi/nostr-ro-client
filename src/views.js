@@ -477,7 +477,7 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>My Notes on Nostr | @delirehberi</title>
-      <style>${css}</style>
+      <style>${raw(css)}</style>
       <script>
         // Init theme
         (function() {
