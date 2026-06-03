@@ -183,6 +183,13 @@ function renderPosts(mainEventIds, eventMap, profileMap) {
         const e = eventMap.get(id);
         if (!e) return '';
 
+        let noteId = e.id;
+        try {
+            noteId = nip19.noteEncode(e.id);
+        } catch (err) {
+            // fallback to hex id if encoding fails
+        }
+
         let parentId = null;
         if (Array.isArray(e.tags)) {
             const eTags = e.tags.filter(tag => tag[0] === 'e' && tag[1] && tag[1] !== e.id);
@@ -225,7 +232,7 @@ function renderPosts(mainEventIds, eventMap, profileMap) {
           <div class="post-content">${finalContent}</div>
           <div class="post-meta">
             <span>${new Date(e.created_at * 1000).toLocaleString()}</span>
-            <a href="https://njump.me/${e.id}" target="_blank" style="color:inherit">share</a>
+            <a href="/p/${noteId}" style="color:inherit">share</a>
           </div>
         </div>
         `;
@@ -234,8 +241,7 @@ function renderPosts(mainEventIds, eventMap, profileMap) {
     return raw(postsHtml);
 }
 
-export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
-    const css = `
+const css = `
     :root {
       --bg: #f9f9f9;
       --container-bg: #fff;
@@ -470,6 +476,7 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
     }
   `;
 
+export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
     return html`
     <!DOCTYPE html>
     <html lang="en">
@@ -537,3 +544,93 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
     </html>
   `;
 };
+
+export const renderPostPage = (eventId, eventMap, profileMap) => {
+    const e = eventMap.get(eventId);
+    let pageTitle = 'Note | My Notes on Nostr';
+    let snippet = 'View this note on Nostr';
+    if (e) {
+        const profile = profileMap.get(e.pubkey) || {};
+        const name = profile.name || profile.display_name || shortifyNpub(e.pubkey);
+        snippet = e.content.slice(0, 100);
+        if (e.content.length > 100) snippet += '...';
+        pageTitle = `Note by @${name}: "${snippet}" | My Notes on Nostr`;
+    }
+
+    return html`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>${escapeHtml(pageTitle)}</title>
+      <meta name="description" content="${escapeHtml(snippet)}" />
+      <style>${raw(css)}</style>
+      <script>
+        // Init theme
+        (function() {
+          const stored = localStorage.getItem('theme');
+          if (stored) {
+            document.documentElement.setAttribute('data-theme', stored);
+          }
+        })();
+
+        function toggleTheme() {
+          const current = document.documentElement.getAttribute('data-theme');
+          const isDark = current === 'dark' || (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          const next = isDark ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+        }
+
+        function loadVideo(container, url) {
+            container.outerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
+        }
+      </script>
+    </head>
+    <body>
+      <div class="container">
+        <header>
+          <div style="display: flex; align-items: center; gap: 0.5em;">
+            <a href="/" class="icon-btn" aria-label="Back to Feed" title="Back to Feed">
+              <svg class="icon-home" viewBox="0 0 24 24">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+            </a>
+            <h1><a href="/" style="color:var(--text)">My Notes on Nostr</a></h1>
+          </div>
+          <div class="header-actions">
+            <!-- Theme Toggler -->
+            <button class="icon-btn" onclick="toggleTheme()" aria-label="Toggle Theme" title="Toggle Theme">
+               <svg class="icon-home" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+               </svg>
+            </button>
+            
+            <!-- Home Link -->
+            <a href="https://emre.xyz" class="icon-btn" aria-label="Go to Home" title="Go to emre.xyz">
+              <svg class="icon-home" viewBox="0 0 24 24">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </a>
+          </div>
+        </header>         
+        <main>
+          ${renderPosts([eventId], eventMap, profileMap)}
+        </main>
+        <footer style="padding: 2em; text-align: center; color: var(--meta); font-size: 0.85rem; border-top: 1px solid var(--border);">
+             <p>
+              Follow me: 
+              <a href="https://njump.me/npub1gmeu0wenescpjpymwmwgnkaedc6vy3aamf5tdtvxxf5z0yll3gdqatwl3v" target="_blank" rel="noopener">
+                delirehberi@emre.xyz
+              </a>
+            </p>
+        </footer>
+      </div>
+    </body>
+    </html>
+  `;
+};
+

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { renderHomePage } from './views.js';
+import { renderHomePage, renderPostPage } from './views.js';
 import { nip19 } from 'nostr-tools';
 
 const app = new Hono();
@@ -106,32 +106,33 @@ app.get('/', async (c) => {
     return c.text('Could not resolve pubkey.', 404);
   }
 
-  // Calculate time for filter
-  const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30; // 30 days
-
   const filter = {
     kinds: [1],
     authors: [pubkeyHex],
-    limit: 500, // Fixed limit
-    since
+    limit: 500 // Fixed limit
   };
 
   // Unified Data Object: Map<id, event>
   const eventMap = new Map();
 
-  // 1. Fetch Main Events
-  let fetchedEvents = [];
-  for (let relay of relays) {
-    try {
-      fetchedEvents = await fetchFromRelay(relay, filter);
-      if (fetchedEvents && fetchedEvents.length > 0) break;
-    } catch (e) {
-      // ignore
-    }
+  // 1. Fetch Main Events from all relays in parallel
+  try {
+    const fetchPromises = relays.map(async (relay) => {
+      try {
+        return await fetchFromRelay(relay, filter);
+      } catch (e) {
+        return [];
+      }
+    });
+    const allRelaysEvents = await Promise.all(fetchPromises);
+    allRelaysEvents.flat().forEach(e => {
+      if (e && e.id) {
+        eventMap.set(e.id, e);
+      }
+    });
+  } catch (e) {
+    // Ignore parallel fetch failures, try to proceed with whatever is in eventMap
   }
-
-  // Add main events to Map
-  fetchedEvents.forEach(e => eventMap.set(e.id, e));
 
   // Sort main events by created_at descending
   const sortedAll = Array.from(eventMap.values()).sort((a, b) => b.created_at - a.created_at);
@@ -164,19 +165,23 @@ app.get('/', async (c) => {
       ids: Array.from(parentIdsToFetch)
     };
 
-    for (let relay of relays) {
-      try {
-        const parentEvents = await fetchFromRelay(relay, parentFilter);
-        if (parentEvents && parentEvents.length > 0) {
-          parentEvents.forEach(p => {
-            eventMap.set(p.id, p);
-            authorsToFetch.add(p.pubkey); // Add parent authors
-          });
-          break;
+    try {
+      const parentPromises = relays.map(async (relay) => {
+        try {
+          return await fetchFromRelay(relay, parentFilter);
+        } catch (e) {
+          return [];
         }
-      } catch (e) {
-        // ignore
-      }
+      });
+      const allParentEvents = await Promise.all(parentPromises);
+      allParentEvents.flat().forEach(p => {
+        if (p && p.id) {
+          eventMap.set(p.id, p);
+          authorsToFetch.add(p.pubkey); // Add parent authors
+        }
+      });
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -194,31 +199,198 @@ app.get('/', async (c) => {
       authors: Array.from(authorsToFetch)
     };
 
-    for (let relay of relays) {
-      try {
-        const profiles = await fetchFromRelay(relay, profileFilter);
-        if (profiles && profiles.length > 0) {
-          profiles.forEach(p => {
-            try {
-              const content = JSON.parse(p.content);
-              if (!profileMap.has(p.pubkey)) {
-                profileMap.set(p.pubkey, content);
-              }
-            } catch (e) {
-              // ignore bad json
-            }
-          });
-          // Try to get as many as possible
-          if (profileMap.size === authorsToFetch.size) break;
+    try {
+      const profilePromises = relays.map(async (relay) => {
+        try {
+          return await fetchFromRelay(relay, profileFilter);
+        } catch (e) {
+          return [];
         }
-      } catch (e) {
-        // ignore
-      }
+      });
+      const allProfiles = await Promise.all(profilePromises);
+      const profileCreatedAtMap = new Map(); // pubkey -> created_at
+
+      allProfiles.flat().forEach(p => {
+        try {
+          const content = JSON.parse(p.content);
+          const existingCreatedAt = profileCreatedAtMap.get(p.pubkey) || 0;
+          if (p.created_at > existingCreatedAt) {
+            profileMap.set(p.pubkey, content);
+            profileCreatedAtMap.set(p.pubkey, p.created_at);
+          }
+        } catch (e) {
+          // ignore bad json
+        }
+      });
+    } catch (e) {
+      // ignore
     }
   }
 
   const htmlString = String(renderHomePage(mainEventIds, eventMap, profileMap));
   await c.env.CACHE.put('homepage', htmlString);
+  return c.html(htmlString, { headers: { 'Cache-Control': 'public, max-age=60' } });
+});
+
+app.get('/p/:id', async (c) => {
+  const id = c.req.param('id');
+  const invalidate = new URL(c.req.url).searchParams.get('cache') === 'invalidate';
+
+  // 1. Parse and decode ID to hex if it is in bech32 format
+  let hexId = id;
+  if (id.startsWith('note1') || id.startsWith('nevent1')) {
+    try {
+      const decoded = nip19.decode(id);
+      if (decoded.type === 'note') {
+        hexId = decoded.data;
+      } else if (decoded.type === 'nevent') {
+        hexId = decoded.data.id;
+      }
+    } catch (e) {
+      return c.text('Invalid Nostr event ID encoding.', 400);
+    }
+  }
+
+  // If it's still not a 64-char hex string, it might be invalid
+  if (!/^[0-9a-fA-F]{64}$/.test(hexId)) {
+    return c.text('Invalid Nostr event ID format. Must be hex or note1/nevent1 bech32.', 400);
+  }
+
+  const cacheKey = `post:${hexId}`;
+
+  // 2. Check Cache
+  if (!invalidate) {
+    const cached = await c.env.CACHE.get(cacheKey);
+    if (cached) {
+      return c.html(cached, { headers: { 'Cache-Control': 'public, max-age=60' } });
+    }
+  }
+
+  const relays = [
+    "wss://relay.emre.xyz",
+    "wss://relay.nostr.band",
+    "wss://relay.damus.io",
+    "wss://nostr-pub.wellorder.net"
+  ];
+
+  const filter = {
+    ids: [hexId],
+    kinds: [1]
+  };
+
+  const eventMap = new Map();
+
+  // 3. Fetch Single Post from all relays in parallel
+  try {
+    const fetchPromises = relays.map(async (relay) => {
+      try {
+        return await fetchFromRelay(relay, filter);
+      } catch (e) {
+        return [];
+      }
+    });
+    const allRelaysEvents = await Promise.all(fetchPromises);
+    allRelaysEvents.flat().forEach(e => {
+      if (e && e.id) {
+        eventMap.set(e.id, e);
+      }
+    });
+  } catch (e) {
+    // ignore
+  }
+
+  const mainEvent = eventMap.get(hexId);
+  if (!mainEvent) {
+    return c.text('Post not found on configured relays.', 404);
+  }
+
+  // 4. Identify parent context
+  const parentIdsToFetch = new Set();
+  const authorsToFetch = new Set();
+
+  authorsToFetch.add(mainEvent.pubkey);
+
+  if (Array.isArray(mainEvent.tags)) {
+    const eTags = mainEvent.tags.filter(tag => tag[0] === 'e' && tag[1] && tag[1] !== mainEvent.id);
+    if (eTags.length > 0) {
+      const parentId = eTags[eTags.length - 1][1];
+      if (!eventMap.has(parentId)) {
+        parentIdsToFetch.add(parentId);
+      }
+    }
+  }
+
+  // 5. Fetch Parent if missing
+  if (parentIdsToFetch.size > 0) {
+    const parentFilter = {
+      ids: Array.from(parentIdsToFetch)
+    };
+
+    try {
+      const parentPromises = relays.map(async (relay) => {
+        try {
+          return await fetchFromRelay(relay, parentFilter);
+        } catch (e) {
+          return [];
+        }
+      });
+      const allParentEvents = await Promise.all(parentPromises);
+      allParentEvents.flat().forEach(p => {
+        if (p && p.id) {
+          eventMap.set(p.id, p);
+          authorsToFetch.add(p.pubkey);
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // 6. Extract mentioned pubkeys
+  eventMap.forEach(event => {
+    const mentionedPubkeys = extractMentionedPubkeys(event.content);
+    mentionedPubkeys.forEach(pk => authorsToFetch.add(pk));
+  });
+
+  // 7. Fetch Profiles in parallel
+  const profileMap = new Map();
+  if (authorsToFetch.size > 0) {
+    const profileFilter = {
+      kinds: [0],
+      authors: Array.from(authorsToFetch)
+    };
+
+    try {
+      const profilePromises = relays.map(async (relay) => {
+        try {
+          return await fetchFromRelay(relay, profileFilter);
+        } catch (e) {
+          return [];
+        }
+      });
+      const allProfiles = await Promise.all(profilePromises);
+      const profileCreatedAtMap = new Map();
+
+      allProfiles.flat().forEach(p => {
+        try {
+          const content = JSON.parse(p.content);
+          const existingCreatedAt = profileCreatedAtMap.get(p.pubkey) || 0;
+          if (p.created_at > existingCreatedAt) {
+            profileMap.set(p.pubkey, content);
+            profileCreatedAtMap.set(p.pubkey, p.created_at);
+          }
+        } catch (e) {
+          // ignore bad json
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // 8. Render
+  const htmlString = String(renderPostPage(hexId, eventMap, profileMap));
+  await c.env.CACHE.put(cacheKey, htmlString);
   return c.html(htmlString, { headers: { 'Cache-Control': 'public, max-age=60' } });
 });
 
