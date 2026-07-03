@@ -268,7 +268,7 @@ const css = `
     }
 
     /* Manual overrides */
-    :root[data-theme="light"] {
+    html:not(.dark) {
       --bg: #f9f9f9;
       --container-bg: #fff;
       --text: #222;
@@ -280,7 +280,7 @@ const css = `
       --parent-bg: #f5f5f5;
     }
 
-    :root[data-theme="dark"] {
+    html.dark {
       --bg: #181a1b;
       --container-bg: #23272a;
       --text: #f1f1f1;
@@ -288,7 +288,6 @@ const css = `
       --border: #333a;
       --link: #f25c54;
       --blockquote: #2c2f33;
-      --parent-bg: #2c2f33;
       --parent-bg: #2c2f33;
     }
 
