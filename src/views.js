@@ -485,22 +485,9 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>My Notes on Nostr | @delirehberi</title>
       <style>${raw(css)}</style>
+      <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
+      <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
-        // Init theme
-        (function() {
-          const stored = localStorage.getItem('theme');
-          if (stored) {
-            document.documentElement.setAttribute('data-theme', stored);
-          }
-        })();
-
-        function toggleTheme() {
-          const current = document.documentElement.getAttribute('data-theme');
-          const isDark = current === 'dark' || (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          const next = isDark ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', next);
-          localStorage.setItem('theme', next);
-        }
 
         function loadVideo(container, url) {
             container.outerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
@@ -509,36 +496,11 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
     </head>
     <body>
       <div class="container">
-        <header>
-          <h1><a href="/" style="color:var(--text)">My Notes on Nostr</a></h1>
-          <div class="header-actions">
-            <!-- Theme Toggler -->
-            <button class="icon-btn" onclick="toggleTheme()" aria-label="Toggle Theme" title="Toggle Theme">
-               <svg class="icon-home" viewBox="0 0 24 24" stroke="currentColor" fill="none">
-                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-               </svg>
-            </button>
-            
-            <!-- Home Link -->
-            <a href="https://emre.xyz" class="icon-btn" aria-label="Go to Home" title="Go to emre.xyz">
-              <svg class="icon-home" viewBox="0 0 24 24">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
-            </a>
-          </div>
-        </header>         
+        <emre-header active-page="nostr"></emre-header>
         <main>
           ${renderPosts(mainEventIds, eventMap, profileMap)}
         </main>
-        <footer style="padding: 2em; text-align: center; color: var(--meta); font-size: 0.85rem; border-top: 1px solid var(--border);">
-             <p>
-              Follow me: 
-              <a href="https://njump.me/npub1gmeu0wenescpjpymwmwgnkaedc6vy3aamf5tdtvxxf5z0yll3gdqatwl3v" target="_blank" rel="noopener">
-                delirehberi@emre.xyz
-              </a>
-            </p>
-        </footer>
+        <emre-footer></emre-footer>
       </div>
     </body>
     </html>
@@ -566,22 +528,9 @@ export const renderPostPage = (eventId, eventMap, profileMap) => {
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(snippet)}" />
       <style>${raw(css)}</style>
+      <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
+      <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
-        // Init theme
-        (function() {
-          const stored = localStorage.getItem('theme');
-          if (stored) {
-            document.documentElement.setAttribute('data-theme', stored);
-          }
-        })();
-
-        function toggleTheme() {
-          const current = document.documentElement.getAttribute('data-theme');
-          const isDark = current === 'dark' || (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          const next = isDark ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', next);
-          localStorage.setItem('theme', next);
-        }
 
         function loadVideo(container, url) {
             container.outerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
@@ -590,44 +539,11 @@ export const renderPostPage = (eventId, eventMap, profileMap) => {
     </head>
     <body>
       <div class="container">
-        <header>
-          <div style="display: flex; align-items: center; gap: 0.5em;">
-            <a href="/" class="icon-btn" aria-label="Back to Feed" title="Back to Feed">
-              <svg class="icon-home" viewBox="0 0 24 24">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-              </svg>
-            </a>
-            <h1><a href="/" style="color:var(--text)">My Notes on Nostr</a></h1>
-          </div>
-          <div class="header-actions">
-            <!-- Theme Toggler -->
-            <button class="icon-btn" onclick="toggleTheme()" aria-label="Toggle Theme" title="Toggle Theme">
-               <svg class="icon-home" viewBox="0 0 24 24" stroke="currentColor" fill="none">
-                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-               </svg>
-            </button>
-            
-            <!-- Home Link -->
-            <a href="https://emre.xyz" class="icon-btn" aria-label="Go to Home" title="Go to emre.xyz">
-              <svg class="icon-home" viewBox="0 0 24 24">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
-            </a>
-          </div>
-        </header>         
+        <emre-header active-page="nostr"></emre-header>
         <main>
           ${renderPosts([eventId], eventMap, profileMap)}
         </main>
-        <footer style="padding: 2em; text-align: center; color: var(--meta); font-size: 0.85rem; border-top: 1px solid var(--border);">
-             <p>
-              Follow me: 
-              <a href="https://njump.me/npub1gmeu0wenescpjpymwmwgnkaedc6vy3aamf5tdtvxxf5z0yll3gdqatwl3v" target="_blank" rel="noopener">
-                delirehberi@emre.xyz
-              </a>
-            </p>
-        </footer>
+        <emre-footer></emre-footer>
       </div>
     </body>
     </html>
