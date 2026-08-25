@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { renderHomePage, renderPostPage } from './views.js';
 import { nip19 } from 'nostr-tools';
+import { parseThemeEvent } from './theme.js';
 
 const app = new Hono();
 
@@ -77,6 +78,101 @@ function extractMentionedPubkeys(content) {
   return pubkeys;
 }
 
+// Helper to fetch and cache user theme (Kind 16767 / Kind 36767)
+async function fetchUserTheme(relays, pubkey, env, invalidate = false) {
+  if (!pubkey) return null;
+  const cacheKey = `theme:${pubkey}`;
+
+  if (!invalidate && env && env.CACHE) {
+    try {
+      const cached = await env.CACHE.get(cacheKey, 'json');
+      if (cached) return cached;
+    } catch (e) {
+      // ignore cache read failure
+    }
+  }
+
+  const themeFilter = {
+    kinds: [16767],
+    authors: [pubkey],
+    limit: 5
+  };
+
+  const themeEvents = [];
+  try {
+    const fetchPromises = relays.map(async (relay) => {
+      try {
+        return await fetchFromRelay(relay, themeFilter);
+      } catch (e) {
+        return [];
+      }
+    });
+    const allThemeEvents = await Promise.all(fetchPromises);
+    allThemeEvents.flat().forEach((e) => {
+      if (e && e.id) themeEvents.push(e);
+    });
+  } catch (e) {
+    // ignore
+  }
+
+  if (themeEvents.length === 0) return null;
+
+  themeEvents.sort((a, b) => b.created_at - a.created_at);
+  const activeEvent = themeEvents[0];
+
+  const referencedThemeMap = new Map();
+  const aTag = Array.isArray(activeEvent.tags) && activeEvent.tags.find((t) => t[0] === 'a' && t[1]);
+  const eTag = Array.isArray(activeEvent.tags) && activeEvent.tags.find((t) => t[0] === 'e' && t[1]);
+
+  if (aTag) {
+    const parts = aTag[1].split(':');
+    if (parts.length >= 3) {
+      const kind = parseInt(parts[0], 10);
+      const author = parts[1];
+      const dTag = parts.slice(2).join(':');
+      try {
+        const refPromises = relays.map(async (relay) => {
+          try {
+            return await fetchFromRelay(relay, { kinds: [kind], authors: [author], '#d': [dTag] });
+          } catch {
+            return [];
+          }
+        });
+        const allRefEvents = await Promise.all(refPromises);
+        allRefEvents.flat().forEach((e) => {
+          if (e && e.id) referencedThemeMap.set(aTag[1], e);
+        });
+      } catch {}
+    }
+  } else if (eTag) {
+    try {
+      const refPromises = relays.map(async (relay) => {
+        try {
+          return await fetchFromRelay(relay, { ids: [eTag[1]] });
+        } catch {
+          return [];
+        }
+      });
+      const allRefEvents = await Promise.all(refPromises);
+      allRefEvents.flat().forEach((e) => {
+        if (e && e.id) referencedThemeMap.set(eTag[1], e);
+      });
+    } catch {}
+  }
+
+  const parsedTheme = parseThemeEvent(activeEvent, referencedThemeMap);
+  if (parsedTheme && env && env.CACHE) {
+    try {
+      // Cache theme in KV with 1-day TTL
+      await env.CACHE.put(cacheKey, JSON.stringify(parsedTheme), { expirationTtl: 86400 });
+    } catch (e) {
+      // ignore cache write failure
+    }
+  }
+
+  return parsedTheme;
+}
+
 app.get('/', async (c) => {
   const invalidate = new URL(c.req.url).searchParams.get('cache') === 'invalidate';
 
@@ -94,7 +190,8 @@ app.get('/', async (c) => {
     "wss://relay.emre.xyz",
     "wss://relay.nostr.band",
     "wss://relay.damus.io",
-    "wss://nostr-pub.wellorder.net"
+    "wss://nostr-pub.wellorder.net",
+    "wss://purplepag.es"
   ];
 
   let pubkeyHex = PUBKEY;
@@ -115,24 +212,29 @@ app.get('/', async (c) => {
   // Unified Data Object: Map<id, event>
   const eventMap = new Map();
 
-  // 1. Fetch Main Events from all relays in parallel
-  try {
-    const fetchPromises = relays.map(async (relay) => {
+  // 1. Fetch Main Events & Theme from relays in parallel
+  const [theme] = await Promise.all([
+    fetchUserTheme(relays, pubkeyHex, c.env, invalidate),
+    (async () => {
       try {
-        return await fetchFromRelay(relay, filter);
+        const fetchPromises = relays.map(async (relay) => {
+          try {
+            return await fetchFromRelay(relay, filter);
+          } catch (e) {
+            return [];
+          }
+        });
+        const allRelaysEvents = await Promise.all(fetchPromises);
+        allRelaysEvents.flat().forEach(e => {
+          if (e && e.id) {
+            eventMap.set(e.id, e);
+          }
+        });
       } catch (e) {
-        return [];
+        // Ignore parallel fetch failures, try to proceed with whatever is in eventMap
       }
-    });
-    const allRelaysEvents = await Promise.all(fetchPromises);
-    allRelaysEvents.flat().forEach(e => {
-      if (e && e.id) {
-        eventMap.set(e.id, e);
-      }
-    });
-  } catch (e) {
-    // Ignore parallel fetch failures, try to proceed with whatever is in eventMap
-  }
+    })()
+  ]);
 
   // Sort main events by created_at descending
   const sortedAll = Array.from(eventMap.values()).sort((a, b) => b.created_at - a.created_at);
@@ -227,7 +329,7 @@ app.get('/', async (c) => {
     }
   }
 
-  const htmlString = String(renderHomePage(mainEventIds, eventMap, profileMap));
+  const htmlString = String(renderHomePage(mainEventIds, eventMap, profileMap, theme));
   await c.env.CACHE.put('homepage', htmlString);
   return c.html(htmlString, { headers: { 'Cache-Control': 'public, max-age=60' } });
 });
@@ -388,8 +490,10 @@ app.get('/p/:id', async (c) => {
     }
   }
 
-  // 8. Render
-  const htmlString = String(renderPostPage(hexId, eventMap, profileMap));
+  // 8. Fetch Theme & Render
+  const themePubkey = mainEvent.pubkey || c.env.PUBKEY;
+  const theme = await fetchUserTheme(relays, themePubkey, c.env, invalidate);
+  const htmlString = String(renderPostPage(hexId, eventMap, profileMap, theme));
   await c.env.CACHE.put(cacheKey, htmlString);
   return c.html(htmlString, { headers: { 'Cache-Control': 'public, max-age=60' } });
 });

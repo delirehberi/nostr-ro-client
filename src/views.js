@@ -1,5 +1,6 @@
 import { html, raw } from 'hono/html';
 import { nip19 } from 'nostr-tools';
+import { generateThemeCss } from './theme.js';
 
 // Helper to escape HTML characters
 function escapeHtml(str) {
@@ -242,53 +243,22 @@ function renderPosts(mainEventIds, eventMap, profileMap) {
 }
 
 const css = `
-    :root {
-      --bg: #f9f9f9;
-      --container-bg: #fff;
-      --text: #222;
-      --meta: #888;
-      --border: #eee;
-      --link: #d93025;
+    html {
+      --bg: var(--emre-bg, #f9fafb);
+      --container-bg: var(--emre-bg, #ffffff);
+      --text: var(--emre-text, #1e293b);
+      --meta: #64748b;
+      --border: var(--emre-nav-border, #e2e8f0);
+      --link: var(--emre-primary, #3b82f6);
       --container-shadow: 0 2px 8px rgba(0,0,0,0.05);
-      --blockquote: #fafafa;
-      --parent-bg: #f5f5f5;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #181a1b;
-        --container-bg: #23272a;
-        --text: #f1f1f1;
-        --meta: #b0b0b0;
-        --border: #333a;
-        --link: #f25c54;
-        --blockquote: #2c2f33;
-        --parent-bg: #2c2f33;
-      }
-    }
-
-    /* Manual overrides */
-    html:not(.dark) {
-      --bg: #f9f9f9;
-      --container-bg: #fff;
-      --text: #222;
-      --meta: #888;
-      --border: #eee;
-      --link: #d93025;
-      --container-shadow: 0 2px 8px rgba(0,0,0,0.05);
-      --blockquote: #fafafa;
-      --parent-bg: #f5f5f5;
+      --blockquote: #f8fafc;
+      --parent-bg: #f1f5f9;
     }
 
     html.dark {
-      --bg: #181a1b;
-      --container-bg: #23272a;
-      --text: #f1f1f1;
-      --meta: #b0b0b0;
-      --border: #333a;
-      --link: #f25c54;
-      --blockquote: #2c2f33;
-      --parent-bg: #2c2f33;
+      --meta: #94a3b8;
+      --blockquote: var(--emre-nav-bg, #1e293b);
+      --parent-bg: var(--emre-bg, #0f172a);
     }
 
     html, body {
@@ -475,7 +445,8 @@ const css = `
     }
   `;
 
-export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
+export const renderHomePage = (mainEventIds, eventMap, profileMap, theme = null) => {
+    const themeCss = theme ? generateThemeCss(theme) : '';
     return html`
     <!DOCTYPE html>
     <html lang="en">
@@ -483,7 +454,7 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>My Notes on Nostr | @delirehberi</title>
-      <style>${raw(css)}</style>
+      <style>${raw(css + '\n' + themeCss)}</style>
       <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
       <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
@@ -506,7 +477,7 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap) => {
   `;
 };
 
-export const renderPostPage = (eventId, eventMap, profileMap) => {
+export const renderPostPage = (eventId, eventMap, profileMap, theme = null) => {
     const e = eventMap.get(eventId);
     let pageTitle = 'Note | My Notes on Nostr';
     let snippet = 'View this note on Nostr';
@@ -518,6 +489,8 @@ export const renderPostPage = (eventId, eventMap, profileMap) => {
         pageTitle = `Note by @${name}: "${snippet}" | My Notes on Nostr`;
     }
 
+    const themeCss = theme ? generateThemeCss(theme) : '';
+
     return html`
     <!DOCTYPE html>
     <html lang="en">
@@ -526,7 +499,7 @@ export const renderPostPage = (eventId, eventMap, profileMap) => {
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(snippet)}" />
-      <style>${raw(css)}</style>
+      <style>${raw(css + '\n' + themeCss)}</style>
       <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
       <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
