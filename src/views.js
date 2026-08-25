@@ -454,8 +454,8 @@ export const renderHomePage = (mainEventIds, eventMap, profileMap, theme = null)
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>My Notes on Nostr | @delirehberi</title>
-      <style>${raw(css + '\n' + themeCss)}</style>
       <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
+      <style>${raw(css + '\n' + themeCss)}</style>
       <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
 
@@ -499,8 +499,8 @@ export const renderPostPage = (eventId, eventMap, profileMap, theme = null) => {
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(snippet)}" />
-      <style>${raw(css + '\n' + themeCss)}</style>
       <link rel="stylesheet" href="https://emre.xyz/components/theme.css">
+      <style>${raw(css + '\n' + themeCss)}</style>
       <script type="module" src="https://emre.xyz/components/ui.js"></script>
       <script>
 

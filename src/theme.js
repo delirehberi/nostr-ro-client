@@ -205,13 +205,18 @@ export function generateThemeCss(theme) {
   let bodyFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
   let titleFontFamily = bodyFontFamily;
 
+  const declaredFonts = new Set();
   for (const font of fonts) {
-    fontFaceDeclarations += `
+    const fontKey = `${font.family}|${font.url}`;
+    if (!declaredFonts.has(fontKey)) {
+      declaredFonts.add(fontKey);
+      fontFaceDeclarations += `
     @font-face {
       font-family: "${font.family}";
       src: url("${font.url}") format("woff2");
       font-display: swap;
     }`;
+    }
 
     if (font.role === 'body') {
       bodyFontFamily = `"${font.family}", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
@@ -231,16 +236,16 @@ export function generateThemeCss(theme) {
     if (backgroundMedia.mode === 'tile') {
       bgStyles = `
       body {
-        background-image: url("${backgroundMedia.url}");
-        background-repeat: repeat;
+        background-image: url("${backgroundMedia.url}") !important;
+        background-repeat: repeat !important;
       }`;
     } else {
       bgStyles = `
       body {
-        background-image: url("${backgroundMedia.url}");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
+        background-image: url("${backgroundMedia.url}") !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-attachment: fixed !important;
       }`;
     }
   }
@@ -248,28 +253,43 @@ export function generateThemeCss(theme) {
   return `
     ${fontFaceDeclarations}
     
-    :root, html {
-      --bg: ${background};
-      --container-bg: ${containerBg};
-      --text: ${text};
-      --primary: ${primary};
-      --link: ${primary};
-      --border: ${border};
-      --meta: ${meta};
-      --parent-bg: ${parentBg};
-      --blockquote: ${blockquote};
-      --font-body: ${bodyFontFamily};
-      --font-title: ${titleFontFamily};
+    :root, html, html.dark, body {
+      --emre-bg: ${background} !important;
+      --emre-text: ${text} !important;
+      --emre-primary: ${primary} !important;
+      --emre-primary-hover: ${primary} !important;
+      --emre-nav-bg: ${background} !important;
+      --emre-nav-border: ${border} !important;
+      --bg: ${background} !important;
+      --container-bg: ${containerBg} !important;
+      --text: ${text} !important;
+      --primary: ${primary} !important;
+      --link: ${primary} !important;
+      --border: ${border} !important;
+      --meta: ${meta} !important;
+      --parent-bg: ${parentBg} !important;
+      --blockquote: ${blockquote} !important;
+      --font-body: ${bodyFontFamily} !important;
+      --font-title: ${titleFontFamily} !important;
     }
 
     html, body {
-      font-family: var(--font-body);
-      background-color: var(--bg);
-      color: var(--text);
+      font-family: var(--font-body) !important;
+      background-color: var(--bg) !important;
+      color: var(--text) !important;
+    }
+
+    .container {
+      background-color: var(--container-bg) !important;
+      color: var(--text) !important;
     }
 
     header h1, .user-name {
-      font-family: var(--font-title);
+      font-family: var(--font-title) !important;
+    }
+
+    a {
+      color: var(--link) !important;
     }
 
     ${bgStyles}

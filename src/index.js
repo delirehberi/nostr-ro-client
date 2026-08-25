@@ -187,11 +187,13 @@ app.get('/', async (c) => {
   const PUBKEY = c.env.PUBKEY;
 
   const relays = [
+    "wss://relay.ditto.pub",
+    "wss://relay.damus.io",
     "wss://relay.emre.xyz",
     "wss://relay.nostr.band",
-    "wss://relay.damus.io",
     "wss://nostr-pub.wellorder.net",
-    "wss://purplepag.es"
+    "wss://purplepag.es",
+    "wss://nos.lol"
   ];
 
   let pubkeyHex = PUBKEY;
@@ -369,10 +371,13 @@ app.get('/p/:id', async (c) => {
   }
 
   const relays = [
+    "wss://relay.ditto.pub",
+    "wss://relay.damus.io",
     "wss://relay.emre.xyz",
     "wss://relay.nostr.band",
-    "wss://relay.damus.io",
-    "wss://nostr-pub.wellorder.net"
+    "wss://nostr-pub.wellorder.net",
+    "wss://purplepag.es",
+    "wss://nos.lol"
   ];
 
   const filter = {
@@ -502,5 +507,8 @@ export default {
   fetch: app.fetch,
   async scheduled(_event, env) {
     await env.CACHE.delete('homepage');
+    if (env.PUBKEY) {
+      await env.CACHE.delete(`theme:${env.PUBKEY}`);
+    }
   }
 };
