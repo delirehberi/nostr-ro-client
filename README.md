@@ -1,6 +1,6 @@
-# Nostr Read-only Client
+# Single-User Nostr Client
 
-A lightweight Cloudflare Worker that fetches and renders your Nostr kind:1 notes as a static web page. No database, no authentication — just a fast, personal read-only feed.
+A modern, single-user read-only Nostr client deployed as a Cloudflare Worker. Fetches and renders all kinds of Nostr events (Notes, Books, Movies, Media, Lists, Articles, Highlights) with human-friendly category tabs, sub-filtering, and client-side relay WebSocket streaming.
 
 **Live demo:** [nostr.emre.xyz](https://nostr.emre.xyz)
 
@@ -8,120 +8,55 @@ A lightweight Cloudflare Worker that fetches and renders your Nostr kind:1 notes
 
 ## Features
 
-- Fetches kind:1 notes from multiple Nostr relays via WebSocket
-- Resolves identity via NIP-05 or direct hex pubkey
-- Renders inline parent/reply context (one level deep)
-- Displays user avatars and display names (kind:0 profiles)
-- Embeds images, YouTube videos, and lazy-loaded native video
-- Decodes `npub`/`nprofile`/`note`/`nevent` mentions with links to [njump.me](https://njump.me)
-- Dark/light mode toggle with `localStorage` persistence
-- HTML response cached in Cloudflare KV — invalidated on demand via query string
+- **Multi-Kind Event Feed**: Fetches all Nostr event kinds authored by the user directly from Nostr relays.
+- **Human-Friendly Category Filters**:
+  - **Notes**: Root posts, replies with thread context, and reposts.
+  - **Books (Bookstr.xyz)**: Native support for Kind 30040 / 30041, NIP-51 reading sets (`books-reading`, `books-read`, `books-to-read`), and reviews (`books:rated`).
+  - **Movies**: Support for movie sets (`movies-watched`, `movies-watchlist`) and NIP-32 ratings/reviews (`movies:rated`) with IMDB / TMDB integration.
+  - **Media**: Photos (Kind 20), Videos (Kind 21/22), file metadata (Kind 1063), and media posts.
+  - **Lists & Curations**: People sets (Kind 30000), Bookmark sets (Kind 30001/30003/10003), and Curated sets.
+  - **Articles**: Long-form articles (Kind 30023) linked directly to [blog.emre.xyz](https://blog.emre.xyz).
+  - **Highlights**: Kind 9802 quotation snippets.
+- **Granular Sub-Filters**: Fast facet switching (`movies:watched`, `movies:rated`, `books:reading`, `media:photos`, etc.).
+- **Hybrid Performance Architecture**:
+  - Initial 100 events server-rendered and cached in KV for instant First Contentful Paint.
+  - Client-side WebSocket connection directly to relays for instant filtering, search, and infinite scroll (`until: timestamp`).
+- **Nostr Theme Engine**: Automatic styling via Kind 16767 / 36767 custom theme events and dark mode.
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|---|---|
 | Runtime | Cloudflare Workers |
 | Framework | [Hono](https://hono.dev) |
 | Nostr | [nostr-tools](https://github.com/nbd-wtf/nostr-tools) (NIP-19) |
-| Storage | Cloudflare KV |
+| Storage | Cloudflare KV (initial SSR cache) |
 | Tooling | Wrangler, Vitest |
 
-## Requirements
-
-- [Node.js](https://nodejs.org) (v18+)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-upgrade/)
-- A Cloudflare account with Workers and KV enabled
-
-## Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/delirehberi/nostr.emre.xyz.git
-cd nostr.emre.xyz
-
-# 2. Install dependencies
-npm install
-
-# 3. Authenticate with Cloudflare
-npx wrangler login
-```
-
-## Configuration
-
-All configuration lives in `wrangler.jsonc`. Update the following before deploying:
-
-| Key | Description |
-|-----|-------------|
-| `vars.HANDLE` | Your NIP-05 identifier (e.g. `you@yourdomain.com`) |
-| `vars.PUBKEY` | Your Nostr public key in hex format (fallback if NIP-05 fails) |
-| `routes[0].pattern` | Your domain (e.g. `nostr.yourdomain.com`) |
-| `routes[0].zone_name` | Your Cloudflare zone (e.g. `yourdomain.com`) |
-| `kv_namespaces[0].id` | Your Cloudflare KV namespace ID |
-
-### Creating a KV namespace
-
-```bash
-npx wrangler kv namespace create CACHE
-# Use the returned id in wrangler.jsonc → kv_namespaces[0].id
-```
+---
 
 ## Development
 
 ```bash
+# Verify Node and run dev server
+nvm use
 npx wrangler dev
 ```
 
-Opens a local dev server at `http://localhost:8787`.
+## Testing
+
+```bash
+nvm use
+npx vitest run
+```
 
 ## Deployment
 
 ```bash
 npx wrangler deploy
 ```
-
-## Caching
-
-Rendered HTML is stored in Cloudflare KV under the key `homepage`. Subsequent requests are served directly from KV without hitting any Nostr relay.
-
-To invalidate and repopulate the cache:
-
-```
-GET https://your-worker-domain/?cache=invalidate
-```
-
-Point a cron job at this URL to keep content fresh on a schedule. Any HTTP-based scheduler works (cron job, GitHub Actions, Cloudflare Cron Triggers, etc.).
-
-## Project Structure
-
-```
-src/
-  index.js    — Hono app: routing, relay fetching, data aggregation
-  views.js    — Server-side HTML rendering, CSS, inline JS
-test/
-  index.spec.js  — Vitest test suite
-wrangler.jsonc   — Cloudflare Worker configuration
-vitest.config.js — Test configuration
-```
-
-## Testing
-
-```bash
-npx vitest
-```
-
-Tests run inside the Cloudflare Workers runtime via `@cloudflare/vitest-pool-workers`.
-
-## Contributing
-
-Contributions are welcome. To propose a change:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/your-feature`)
-3. Commit your changes
-4. Open a pull request describing what you changed and why
-
-Please keep changes focused and avoid unnecessary refactoring in unrelated areas.
 
 ## License
 
