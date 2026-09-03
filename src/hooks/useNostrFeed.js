@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
 
 const CATEGORY_KINDS_MAP = {
@@ -141,16 +142,35 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
           } catch (_) {}
         }
 
-        // Find mentioned pubkeys or parent events
+        // Find mentioned pubkeys, parent events, quotes, or reaction targets
         if (Array.isArray(e.tags)) {
           e.tags.forEach((tag) => {
             if (tag[0] === 'p' && tag[1]) {
               pubkeysToRequest.push(tag[1]);
             }
-            if (tag[0] === 'e' && tag[1] && tag[1] !== e.id) {
+            if ((tag[0] === 'e' || tag[0] === 'q') && tag[1] && tag[1] !== e.id) {
               parentIdsToRequest.push(tag[1]);
             }
           });
+        }
+
+        // Find inline quoted event mentions (nostr:nevent1... / nostr:note1...)
+        if (e.content && typeof e.content === 'string') {
+          const mentionMatches = e.content.match(/(?:nostr:)?\b((?:nevent|note)1[0-9a-z]{20,})\b/g);
+          if (mentionMatches) {
+            mentionMatches.forEach((m) => {
+              const clean = m.replace(/^nostr:/, '');
+              try {
+                const decoded = nip19.decode(clean);
+                if (decoded.type === 'note' && decoded.data && decoded.data !== e.id) {
+                  parentIdsToRequest.push(decoded.data);
+                } else if (decoded.type === 'nevent' && decoded.data?.id && decoded.data.id !== e.id) {
+                  parentIdsToRequest.push(decoded.data.id);
+                  if (decoded.data.author) pubkeysToRequest.push(decoded.data.author);
+                }
+              } catch (_) {}
+            });
+          }
         }
       });
 

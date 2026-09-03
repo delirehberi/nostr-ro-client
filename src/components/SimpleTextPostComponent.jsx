@@ -1,7 +1,9 @@
 import React from 'react';
 import { nip19 } from 'nostr-tools';
+import { extractEventMetadata } from '../kinds.js';
 import { ProfileAvatar, shortifyNpub } from './ProfileAvatar.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
+import { QuotedEventCard } from './QuotedEventCard.jsx';
 
 export function SimpleTextPostComponent({ event, profileMap, eventMap }) {
   if (!event) return null;
@@ -36,6 +38,7 @@ export function SimpleTextPostComponent({ event, profileMap, eventMap }) {
 
   // The actual event whose author and content should be displayed
   const displayEvent = targetEvent || event;
+  const meta = extractEventMetadata(displayEvent);
 
   let noteId = displayEvent.id || event.id;
   try {
@@ -92,6 +95,14 @@ export function SimpleTextPostComponent({ event, profileMap, eventMap }) {
     reposterName = reposterProfile.display_name || reposterProfile.name || shortifyNpub(reposterPubkey);
   }
 
+  // Clean content of trailing or standalone quote links if quotes are rendered below
+  let cleanContent = displayEvent.content || '';
+  if (meta.quotes && meta.quotes.length > 0) {
+    cleanContent = cleanContent
+      .replace(/(?:^|\n)\s*(?:\[event:(?:nevent|note)1[0-9a-z]+\]|nostr:(?:nevent|note)1[0-9a-z]+)\s*(?=\n|$)/gi, '\n')
+      .trim();
+  }
+
   return (
     <>
       {isRepost && (
@@ -103,13 +114,42 @@ export function SimpleTextPostComponent({ event, profileMap, eventMap }) {
         </div>
       )}
 
+      {meta.repoContext && (
+        <div className="repo-context-banner">
+          <span className="repo-context-icon">💻</span>
+          <span className="repo-context-label">Commented on repository:</span>
+          <a
+            href={meta.repoContext.url || `https://njump.me/${meta.repoContext.coordinate || meta.repoContext.name}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="repo-context-link"
+          >
+            {meta.repoContext.title || meta.repoContext.name}
+          </a>
+        </div>
+      )}
+
       {parentBlock}
 
       <div className="post-header">
         <ProfileAvatar pubkey={displayEvent.pubkey} profileMap={profileMap} />
       </div>
 
-      <FormattedContent content={displayEvent.content} profileMap={profileMap} />
+      <FormattedContent content={cleanContent} profileMap={profileMap} />
+
+      {meta.quotes && meta.quotes.length > 0 && (
+        <div className="note-quotes-section">
+          {meta.quotes.map((q, idx) => (
+            <QuotedEventCard
+              key={idx}
+              quoteId={q.id}
+              quoteBech32={q.bech32}
+              profileMap={profileMap}
+              eventMap={eventMap}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="post-meta">
         <span>

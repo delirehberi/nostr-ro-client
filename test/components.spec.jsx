@@ -9,6 +9,11 @@ import { MediaComponent } from '../src/components/MediaComponent.jsx';
 import { ListComponent } from '../src/components/ListComponent.jsx';
 import { HighlightComponent } from '../src/components/HighlightComponent.jsx';
 import { GenericComponent } from '../src/components/GenericComponent.jsx';
+import { GitEventComponent } from '../src/components/GitEventComponent.jsx';
+import { AppHandlerComponent } from '../src/components/AppHandlerComponent.jsx';
+import { SnippetComponent } from '../src/components/SnippetComponent.jsx';
+import { ReactionComponent } from '../src/components/ReactionComponent.jsx';
+import { QuotedEventCard } from '../src/components/QuotedEventCard.jsx';
 import { EventCard } from '../src/components/EventCard.jsx';
 import { FilterBar } from '../src/components/FilterBar.jsx';
 import { RatingStars } from '../src/components/RatingStars.jsx';
@@ -117,6 +122,24 @@ describe('React Component Suite', () => {
       expect(screen.getByText(/BAGIMSIZ MÜZİSYENLER RİSK ALTINDA!/)).toBeDefined();
       expect(container.textContent).not.toContain('{"id":');
       expect(container.textContent).not.toContain('"pubkey":');
+    });
+
+    it('renders repository context banner when note comments on a repository', () => {
+      const event = {
+        id: 'note_repo_comment',
+        kind: 1,
+        pubkey: mockPubkey,
+        content: 'I was planning to start this type of project.',
+        created_at: 1787317300,
+        tags: [
+          ['r', 'https://github.com/nostr-protocol/nips/blob/master/C0.md']
+        ]
+      };
+
+      const { container } = render(<SimpleTextPostComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('Commented on repository:')).toBeDefined();
+      expect(screen.getByText('nostr-protocol/nips: C0.md')).toBeDefined();
+      expect(container.querySelector('.repo-context-banner')).toBeDefined();
     });
   });
 
@@ -327,10 +350,16 @@ describe('React Component Suite', () => {
   });
 
   describe('ListComponent', () => {
-    it('renders people set list with members', () => {
-      const friendPubkey = '1111111111111111111111111111111111111111111111111111111111111111';
+    it('renders people set list with avatar stack and ellipsis for extra members', () => {
+      const friendPubkey1 = '1111111111111111111111111111111111111111111111111111111111111111';
+      const friendPubkey2 = '2222222222222222222222222222222222222222222222222222222222222222';
+      const friendPubkey3 = '3333333333333333333333333333333333333333333333333333333333333333';
+      const friendPubkey4 = '4444444444444444444444444444444444444444444444444444444444444444';
       const friendProfileMap = new Map([
-        [friendPubkey, { name: 'satoshi', display_name: 'Satoshi Nakamoto' }]
+        [friendPubkey1, { name: 'satoshi', display_name: 'Satoshi Nakamoto' }],
+        [friendPubkey2, { name: 'hal', display_name: 'Hal Finney' }],
+        [friendPubkey3, { name: 'nick', display_name: 'Nick Szabo' }],
+        [friendPubkey4, { name: 'adam', display_name: 'Adam Back' }]
       ]);
 
       const event = {
@@ -341,13 +370,46 @@ describe('React Component Suite', () => {
         tags: [
           ['d', 'core-devs'],
           ['title', 'Core Developers'],
-          ['p', friendPubkey]
+          ['p', friendPubkey1],
+          ['p', friendPubkey2],
+          ['p', friendPubkey3],
+          ['p', friendPubkey4]
         ]
       };
 
-      render(<ListComponent event={event} profileMap={friendProfileMap} />);
+      const { container } = render(<ListComponent event={event} profileMap={friendProfileMap} />);
       expect(screen.getByText('Core Developers')).toBeDefined();
-      expect(screen.getByText('@satoshi')).toBeDefined();
+      expect(container.querySelector('.follow-count-label').textContent).toContain('4 accounts followed');
+      expect(container.querySelectorAll('.avatar-stack-img').length).toBe(3);
+      expect(screen.getByText('+1')).toBeDefined();
+    });
+
+    it('renders Kind 3 follow list with first 3 avatars and ellipsis', () => {
+      const p1 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      const p2 = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      const p3 = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+      const p4 = 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
+      const p5 = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+      const event = {
+        id: 'follow_list_1',
+        kind: 3,
+        pubkey: mockPubkey,
+        created_at: 1787317300,
+        tags: [
+          ['p', p1],
+          ['p', p2],
+          ['p', p3],
+          ['p', p4],
+          ['p', p5]
+        ]
+      };
+
+      const { container } = render(<ListComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('Follow List')).toBeDefined();
+      expect(container.querySelector('.follow-count-label').textContent).toContain('5 accounts followed');
+      expect(container.querySelectorAll('.avatar-stack-img').length).toBe(3);
+      expect(screen.getByText('+2')).toBeDefined();
     });
   });
 
@@ -372,6 +434,49 @@ describe('React Component Suite', () => {
   });
 
   describe('GenericComponent', () => {
+    it('renders clean App Data card for Kind 30078 instead of raw base64 data dump', () => {
+      const event = {
+        id: 'app_data_1',
+        kind: 30078,
+        pubkey: mockPubkey,
+        content: 'AvBNOIR0iO2y6/H81YQW6dwuOIuq+rnWN+Ljn9bx5EL1IUEezmgr9Ubn7sEt1QIgXIOPzX1X+eqmJrLPO0YUna',
+        created_at: 1787317300,
+        tags: [
+          ['d', 'ditto:metadata'],
+          ['title', 'Ditto Metadata']
+        ]
+      };
+
+      const { container } = render(<GenericComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('Ditto Metadata')).toBeDefined();
+      expect(screen.getByText(/Application configuration & state update for/)).toBeDefined();
+      expect(screen.getByText('Ditto')).toBeDefined();
+      expect(container.querySelector('.app-data-details')).toBeDefined();
+      expect(screen.getByText(/Encrypted \/ Serialized Payload/)).toBeDefined();
+    });
+
+    it('renders clean Label & Review card for Kind 1985 with target and labels', () => {
+      const event = {
+        id: 'review_nip_1',
+        kind: 1985,
+        pubkey: mockPubkey,
+        content: 'Looks solid and ready for merge.',
+        created_at: 1787317300,
+        tags: [
+          ['L', 'nip'],
+          ['l', 'approved', 'nip'],
+          ['i', 'https://github.com/nostr-protocol/nips/blob/master/C0.md']
+        ]
+      };
+
+      const { container } = render(<GenericComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('⭐ Label / Review')).toBeDefined();
+      expect(screen.getByText('Reviewing / Labeled:')).toBeDefined();
+      expect(container.querySelector('.review-target-link').textContent).toContain('nostr-protocol/nips: C0.md');
+      expect(screen.getByText('🏷️ approved')).toBeDefined();
+      expect(screen.getByText('Looks solid and ready for merge.')).toBeDefined();
+    });
+
     it('renders generic fallback for unknown kind', () => {
       const event = {
         id: 'other_1',
@@ -445,6 +550,30 @@ describe('React Component Suite', () => {
   });
 
   describe('FilterBar', () => {
+    it('defaults activeCategory to notes and activates notes subfilters', () => {
+      const handleSelect = vi.fn();
+      const counts = { all: 10, notes: 4, movies: 3, books: 3 };
+
+      const { container } = render(
+        <FilterBar
+          categoryCounts={counts}
+          onSelectCategory={handleSelect}
+        />
+      );
+
+      const notesTab = container.querySelector('.filter-tab.active[data-category="notes"]');
+      expect(notesTab).toBeDefined();
+      expect(notesTab.textContent).toContain('Notes');
+      expect(notesTab.textContent).toContain('4');
+
+      const notesSubRow = container.querySelector('#sub-row-notes.sub-filter-row.visible');
+      expect(notesSubRow).toBeDefined();
+      expect(screen.getByText('All Notes')).toBeDefined();
+      expect(screen.getByText('Posts')).toBeDefined();
+      expect(screen.getByText('Replies')).toBeDefined();
+      expect(screen.getByText('Reposts')).toBeDefined();
+    });
+
     it('renders tabs and subfilters, handling user clicks', () => {
       const handleSelect = vi.fn();
       const counts = { all: 10, notes: 4, movies: 3, books: 3 };
@@ -471,4 +600,191 @@ describe('React Component Suite', () => {
       expect(handleSelect).toHaveBeenCalledWith('movies', 'watchlist');
     });
   });
+
+  describe('GitEventComponent', () => {
+    it('renders NIP-34 pull request with repository banner and gitworkshop link', () => {
+      const event = {
+        id: '98ff1e09e02bc7420e39d714290898c92c6ebe6b',
+        pubkey: mockPubkey,
+        kind: 1618,
+        content: 'as nostr.org.tr developer, i am giving turkish translation support...',
+        created_at: 1787317300,
+        tags: [
+          ['a', `30617:${mockPubkey}:ditto`],
+          ['commit', '98ff1e09e02bc7420e39d714290898c92c6ebe6b'],
+          ['subject', 'Turkish translations added for UI']
+        ]
+      };
+
+      const { container } = render(<GitEventComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('Turkish translations added for UI')).toBeDefined();
+      expect(screen.getByText('ditto')).toBeDefined();
+      expect(screen.getByText('98ff1e0')).toBeDefined();
+      expect(container.querySelector('.btn-gitworkshop')).toBeDefined();
+    });
+
+    it('renders NIP-34 repository announcement with clone button', () => {
+      const event = {
+        id: 'repo_ann_1',
+        pubkey: mockPubkey,
+        kind: 30617,
+        content: 'A decentralized client repository',
+        created_at: 1787317300,
+        tags: [
+          ['d', 'Snippets'],
+          ['clone', 'https://relay.ngit.dev/Snippets.git']
+        ]
+      };
+
+      const { container } = render(<GitEventComponent event={event} profileMap={profileMap} />);
+      expect(screen.getAllByText('Snippets').length).toBeGreaterThan(0);
+      expect(container.querySelector('.git-clone-code').textContent).toContain('git clone https://relay.ngit.dev/Snippets.git');
+      expect(container.querySelector('.btn-git-copy')).toBeDefined();
+    });
+  });
+
+  describe('AppHandlerComponent', () => {
+    it('renders NIP-89 app announcement with website and NostrHub links', () => {
+      const event = {
+        id: 'app_1',
+        pubkey: mockPubkey,
+        kind: 31990,
+        content: JSON.stringify({
+          name: 'Snippets',
+          about: 'Decentralized code snippet sharing',
+          website: 'https://snips.emre.xyz',
+          nip05: 'delirehberi@emre.xyz'
+        }),
+        created_at: 1787317300,
+        tags: [
+          ['d', '5wo5lk0l'],
+          ['k', '1337']
+        ]
+      };
+
+      const { container } = render(<AppHandlerComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('Snippets')).toBeDefined();
+      expect(screen.getByText('Decentralized code snippet sharing')).toBeDefined();
+      expect(screen.getByText(/Open Website/)).toBeDefined();
+      expect(screen.getByText(/View on NostrHub/)).toBeDefined();
+      expect(container.querySelector('.btn-nostrhub')).toBeDefined();
+    });
+  });
+
+  describe('SnippetComponent', () => {
+    it('renders code snippet with language tag and snips.emre.xyz link', () => {
+      const event = {
+        id: '3092759dac162b55606ba8339ce1400cf62a0fc1e45d6e3d1d2e0a831d0e59cd',
+        pubkey: mockPubkey,
+        kind: 1337,
+        content: 'def rotate_video():\n    pass',
+        created_at: 1787317300,
+        tags: [
+          ['title', 'rotatevideo.ipynb'],
+          ['l', 'python']
+        ]
+      };
+
+      const { container } = render(<SnippetComponent event={event} profileMap={profileMap} />);
+      expect(screen.getByText('💻 rotatevideo.ipynb')).toBeDefined();
+      expect(screen.getByText('python')).toBeDefined();
+      expect(container.querySelector('.snippet-code-pre code').textContent).toContain('def rotate_video()');
+      const snipsBtn = container.querySelector('.btn-snips');
+      expect(snipsBtn).toBeDefined();
+      expect(snipsBtn.getAttribute('href')).toBe('https://snips.emre.xyz/#/s/3092759dac162b55606ba8339ce1400cf62a0fc1e45d6e3d1d2e0a831d0e59cd');
+    });
+  });
+
+  describe('ReactionComponent', () => {
+    it('renders reaction with embedded target preview', () => {
+      const targetEvent = {
+        id: 'target_post_1',
+        pubkey: mockPubkey,
+        kind: 1,
+        content: 'Original post content that was liked',
+        created_at: 1787317000,
+        tags: []
+      };
+
+      const eventMap = new Map([
+        [targetEvent.id, targetEvent]
+      ]);
+
+      const event = {
+        id: 'reaction_evt_1',
+        pubkey: mockPubkey,
+        kind: 7,
+        content: '+',
+        created_at: 1787317300,
+        tags: [
+          ['e', targetEvent.id],
+          ['p', mockPubkey]
+        ]
+      };
+
+      const { container } = render(
+        <ReactionComponent event={event} profileMap={profileMap} eventMap={eventMap} />
+      );
+      expect(screen.getByText('Liked post')).toBeDefined();
+      expect(screen.getByText('Original post content that was liked')).toBeDefined();
+      expect(container.querySelector('.reaction-badge')).toBeDefined();
+    });
+  });
+
+  describe('QuotedEventCard and SimpleTextPostComponent quotes', () => {
+    it('renders QuotedEventCard under note when quoting another event', () => {
+      const quotedEvent = {
+        id: 'quoted_note_1',
+        pubkey: mockPubkey,
+        kind: 1,
+        content: 'Turkish Nostr community is growing!',
+        created_at: 1787316000,
+        tags: []
+      };
+
+      const eventMap = new Map([
+        [quotedEvent.id, quotedEvent]
+      ]);
+
+      const noteEvent = {
+        id: 'root_note_1',
+        pubkey: mockPubkey,
+        kind: 1,
+        content: 'Nostr Turkish Community have nostr account now!\n\n[event:nevent1qqsp3290x]',
+        created_at: 1787317300,
+        tags: [
+          ['q', quotedEvent.id]
+        ]
+      };
+
+      render(
+        <SimpleTextPostComponent event={noteEvent} profileMap={profileMap} eventMap={eventMap} />
+      );
+      expect(screen.getByText('Nostr Turkish Community have nostr account now!')).toBeDefined();
+      expect(screen.getByText('Turkish Nostr community is growing!')).toBeDefined();
+    });
+  });
+
+  describe('ListComponent with Kind 10017', () => {
+    it('renders Git Follow List with GitWorkshop profile links', () => {
+      const event = {
+        id: 'git_follow_1',
+        pubkey: mockPubkey,
+        kind: 10017,
+        content: '',
+        created_at: 1787317300,
+        tags: [
+          ['p', mockPubkey]
+        ]
+      };
+
+      const { container } = render(
+        <ListComponent event={event} profileMap={profileMap} />
+      );
+      expect(screen.getByText('Git Follow List')).toBeDefined();
+      expect(screen.getByText(/developers \/ contributors/)).toBeDefined();
+      expect(container.querySelector('.git-badge')).toBeDefined();
+    });
+  });
 });
+

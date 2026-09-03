@@ -10,6 +10,50 @@
  * - Highlights (Kind 9802)
  */
 
+import { nip19 } from 'nostr-tools';
+
+/**
+ * Encode addressable pointer (NIP-19 naddr)
+ */
+export function encodeNaddr(pubkey, kind, identifier, relays = []) {
+  try {
+    return nip19.naddrEncode({
+      pubkey,
+      kind: typeof kind === 'string' ? parseInt(kind, 10) : kind,
+      identifier: identifier || '',
+      relays: Array.isArray(relays) ? relays : []
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Encode public key to npub
+ */
+export function encodeNpub(pubkey) {
+  try {
+    return nip19.npubEncode(pubkey);
+  } catch (_) {
+    return pubkey;
+  }
+}
+
+/**
+ * Encode event pointer (NIP-19 nevent)
+ */
+export function encodeNevent(id, pubkey = null, kind = null, relays = []) {
+  try {
+    const data = { id };
+    if (pubkey) data.author = pubkey;
+    if (kind) data.kind = kind;
+    if (relays && relays.length > 0) data.relays = relays;
+    return nip19.neventEncode(data);
+  } catch (_) {
+    return null;
+  }
+}
+
 export const CATEGORIES_CONFIG = [
   {
     id: 'all',
@@ -204,6 +248,25 @@ export function getKindLabel(kind) {
       return '📁 File Metadata';
     case 1111:
       return '💬 Comment';
+    case 1337:
+    case 31337:
+      return '💻 Code Snippet';
+    case 1617:
+      return '💻 Git Patch (NIP-34)';
+    case 1618:
+      return '🔀 Git Pull Request (NIP-34)';
+    case 1621:
+      return '❗ Git Issue (NIP-34)';
+    case 1622:
+      return '💬 Git Review / Comment';
+    case 1630:
+      return '🟢 Git Status: Open';
+    case 1631:
+      return '🟣 Git Status: Applied';
+    case 1632:
+      return '🔴 Git Status: Closed';
+    case 1633:
+      return '⚪ Git Status: Draft';
     case 1985:
       return '⭐ Label / Review';
     case 9802:
@@ -226,6 +289,8 @@ export function getKindLabel(kind) {
       return '🔍 Search Relays';
     case 10015:
       return '🎯 Interests List';
+    case 10017:
+      return '💻 Git Follow List';
     case 10030:
       return '😀 Custom Emojis';
     case 10050:
@@ -261,8 +326,11 @@ export function getKindLabel(kind) {
       return '📦 Repository State (NIP-34)';
     case 31922:
     case 31923:
-    case 31989:
       return '🎬 Media Tracker';
+    case 31989:
+      return '⭐ App Recommendation';
+    case 31990:
+      return '📱 Nostr App (NIP-89)';
     case 31985:
       return '⭐ Review / Rating';
     default:
@@ -360,7 +428,7 @@ export function classifyEvent(event) {
     content.toLowerCase().includes('letterboxd') ||
     content.toLowerCase().includes('imdb.com');
 
-  if ((kind === 30001 || kind === 30003 || kind === 1985 || kind === 31985 || kind === 31989 || kind === 31922 || kind === 31923 || kind === 30004) && isMovieTag) {
+  if ((kind === 30001 || kind === 30003 || kind === 1985 || kind === 31985 || kind === 31922 || kind === 31923 || kind === 30004) && isMovieTag) {
     let sub = 'watched';
     if (kind === 1985 || kind === 31985 || extractRating(tags, content) !== null || dTag.includes('rated') || dTag.includes('reviews')) {
       sub = 'rated';
@@ -386,9 +454,9 @@ export function classifyEvent(event) {
     return { category: 'media', subCategory: 'all' };
   }
 
-  // 6. Generic Lists & Sets (All 10000-19999 and 30000-30005)
-  if ((kind >= 10000 && kind < 20000) || (kind >= 30000 && kind <= 30005)) {
-    if (kind === 30000 || kind === 10000) {
+  // 6. Generic Lists & Sets (Kind 3 Contact list, 10000-19999 and 30000-30005)
+  if (kind === 3 || (kind >= 10000 && kind < 20000) || (kind >= 30000 && kind <= 30005)) {
+    if (kind === 3 || kind === 30000 || kind === 10000 || kind === 10017) {
       return { category: 'lists', subCategory: 'people' };
     }
     if (kind === 10003 || kind === 30001 || kind === 30003) {
@@ -430,6 +498,26 @@ export function classifyEvent(event) {
     }
 
     return { category: 'notes', subCategory: 'posts' };
+  }
+
+  // 8. Code Snippets (Kind 1337 / Kind 31337 / NIP-CO)
+  if (kind === 1337 || kind === 31337) {
+    return { category: 'other', subCategory: 'snippet' };
+  }
+
+  // 9. NIP-34 Git events
+  if (kind === 1617 || kind === 1618 || kind === 1621 || kind === 1622 || (kind >= 1630 && kind <= 1633) || kind === 30617 || kind === 30618) {
+    return { category: 'other', subCategory: 'git' };
+  }
+
+  // 10. NIP-89 App Handlers & Recommendations
+  if (kind === 31990 || kind === 31989) {
+    return { category: 'other', subCategory: 'app' };
+  }
+
+  // 11. Reactions
+  if (kind === 7) {
+    return { category: 'other', subCategory: 'reaction' };
   }
 
   // Fallback
@@ -762,6 +850,335 @@ export function extractEventMetadata(event, baseUrl = 'https://blog.emre.xyz') {
     }
   });
 
+  // App Data Context (Kind 30078 / NIP-78 and app configs)
+  const isAppDataKind = event.kind === 30078 || (event.kind >= 30000 && event.kind < 40000 && event.kind !== 31990 && event.kind !== 30617 && event.kind !== 30618 && (dTag.includes('metadata') || dTag.includes('settings') || dTag.includes('state') || dTag.includes('config') || dTag.includes('data')));
+  const isBase64Blob = typeof content === 'string' && /^[A-Za-z0-9+/=\s]{40,}$/.test(content.trim()) && !content.trim().includes(' ');
+  const isJsonBlob = typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('[')) && content.trim().length > 40;
+  const isEncryptedOrRaw = isBase64Blob || isJsonBlob;
+
+  let appContext = null;
+  if (isAppDataKind || event.kind === 30078) {
+    const rawAppName = dTag ? dTag.split(/[:\-_/]/)[0] : (title ? title.split(/[:\s]/)[0] : 'App');
+    const appName = rawAppName ? rawAppName.charAt(0).toUpperCase() + rawAppName.slice(1) : 'Application';
+    appContext = {
+      isAppData: true,
+      appName,
+      identifier: dTag || title || `Kind ${event.kind}`,
+      isEncryptedOrRaw,
+      description: `Application configuration and state data stored on Nostr (NIP-78).`
+    };
+  }
+
+  // NIP-89 Application Handler Context (Kind 31990 / 31989)
+  let appHandlerContext = null;
+  if (event.kind === 31990 || event.kind === 31989) {
+    let appMeta = {};
+    if (content && typeof content === 'string' && content.trim().startsWith('{')) {
+      try {
+        appMeta = JSON.parse(content);
+      } catch (_) {}
+    }
+
+    const appName = appMeta.name || getTagValue(tags, 'name') || title || dTag || 'Nostr App';
+    const appAbout = appMeta.about || appMeta.description || getTagValue(tags, 'about') || getTagValue(tags, 'description') || summary || '';
+    const appPicture = appMeta.picture || appMeta.image || appMeta.logo || getTagValue(tags, 'picture') || getTagValue(tags, 'image') || image || null;
+    const appWebsite = appMeta.website || getTagValue(tags, 'website') || getTagValue(tags, 'web') || null;
+    const appNip05 = appMeta.nip05 || getTagValue(tags, 'nip05') || null;
+    const appBanner = appMeta.banner || getTagValue(tags, 'banner') || null;
+    const supportedKinds = getAllTagValues(tags, 'k').map((k) => parseInt(k, 10)).filter((k) => !isNaN(k));
+    const appNaddr = encodeNaddr(event.pubkey, event.kind, dTag);
+
+    appHandlerContext = {
+      isAppHandler: true,
+      name: appName,
+      about: appAbout,
+      picture: appPicture,
+      website: appWebsite,
+      nip05: appNip05,
+      banner: appBanner,
+      supportedKinds,
+      naddr: appNaddr,
+      nostrhubUrl: appNaddr ? `https://nostrhub.io/a/${appNaddr}` : `https://nostrhub.io/a/${event.id}`
+    };
+  }
+
+  // Code Snippet Context (Kind 1337 / 31337 / NIP-CO)
+  let snippetContext = null;
+  if (event.kind === 1337 || event.kind === 31337) {
+    const rawTitle = title || getTagValue(tags, 'name') || dTag || 'code-snippet';
+    const language = getTagValue(tags, 'l') || getTagValue(tags, 'extension') || (rawTitle.includes('.') ? rawTitle.split('.').pop() : 'code');
+    const snippetDesc = summary || getTagValue(tags, 'description') || '';
+    const snippetNaddr = event.kind === 31337 ? encodeNaddr(event.pubkey, event.kind, dTag) : null;
+    
+    snippetContext = {
+      isSnippet: true,
+      title: rawTitle,
+      language: language.toLowerCase(),
+      description: snippetDesc,
+      naddr: snippetNaddr,
+      snipsUrl: `https://snips.emre.xyz/#/s/${event.id}`
+    };
+  }
+
+  // Reaction Context (Kind 7)
+  let reactionContext = null;
+  if (event.kind === 7) {
+    const rawContent = (content || '+').trim();
+    const targetEventId = getTagValue(tags, 'e');
+    const targetAuthor = getTagValue(tags, 'p');
+    const targetCoordinate = getTagValue(tags, 'a');
+
+    reactionContext = {
+      isReaction: true,
+      reaction: rawContent || '+',
+      targetEventId,
+      targetAuthor,
+      targetCoordinate
+    };
+  }
+
+  // Label & Review Context (Kind 1985 / 31985 / NIP-32)
+  const isLabelOrReview = event.kind === 1985 || event.kind === 31985 || tags.some((t) => Array.isArray(t) && (t[0] === 'L' || t[0] === 'l'));
+  let labelContext = null;
+  if (isLabelOrReview) {
+    const namespaces = getAllTagValues(tags, 'L');
+    const labelTags = tags
+      .filter((t) => Array.isArray(t) && t[0] === 'l' && t[1])
+      .map((t) => ({ value: t[1], namespace: t[2] || (namespaces[0] || null) }));
+
+    let target = null;
+    const iTag = tags.find((t) => Array.isArray(t) && t[0] === 'i' && t[1]);
+    const rTag = tags.find((t) => Array.isArray(t) && t[0] === 'r' && t[1]);
+    const eTag = tags.find((t) => Array.isArray(t) && t[0] === 'e' && t[1]);
+    const pTag = tags.find((t) => Array.isArray(t) && t[0] === 'p' && t[1]);
+    const aTag = tags.find((t) => Array.isArray(t) && t[0] === 'a' && t[1]);
+
+    const targetUrl = (iTag && iTag[1].startsWith('http')) ? iTag[1] : (rTag && rTag[1].startsWith('http')) ? rTag[1] : null;
+    if (targetUrl) {
+      const ghMatch = targetUrl.match(/github\.com\/([^/]+\/[^/]+)(?:\/(?:blob|tree|issues|pull)\/[^/]+\/(.+)|(?:\/(?:blob|tree|issues|pull)\/(.+)))?/i);
+      if (ghMatch) {
+        const repo = ghMatch[1];
+        const filePath = ghMatch[2] || ghMatch[3] || '';
+        const fileName = filePath ? filePath.split('/').pop() : '';
+        target = {
+          type: 'github',
+          url: targetUrl,
+          repo,
+          path: filePath,
+          fileName,
+          title: fileName ? `${repo}: ${fileName}` : repo
+        };
+      } else {
+        target = {
+          type: 'url',
+          url: targetUrl,
+          title: targetUrl.replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/$/, '')
+        };
+      }
+    } else if (iTag) {
+      target = { type: 'identifier', value: iTag[1], title: iTag[2] || iTag[1] };
+    } else if (eTag) {
+      target = { type: 'event', eventId: eTag[1] };
+    } else if (pTag) {
+      target = { type: 'profile', pubkey: pTag[1] };
+    } else if (aTag) {
+      target = { type: 'coordinate', coordinate: aTag[1] };
+    }
+
+    labelContext = {
+      isLabelOrReview: true,
+      namespaces,
+      labels: labelTags,
+      target
+    };
+  }
+
+  // Repository & Git Context (NIP-34 Git events & repo references)
+  const isGitKind = event.kind === 1617 || event.kind === 1618 || event.kind === 1621 || event.kind === 1622 || (event.kind >= 1630 && event.kind <= 1633) || event.kind === 30617 || event.kind === 30618;
+  const repoATags = tags.filter((t) => Array.isArray(t) && t[0] === 'a' && t[1] && t[1].startsWith('30617:'));
+  const repoATag = repoATags[0] || null;
+  const ghTag = tags.find((t) => Array.isArray(t) && (t[0] === 'r' || t[0] === 'i' || t[0] === 'u') && t[1] && t[1].includes('github.com/'));
+
+  let repoContext = null;
+  let gitContext = null;
+
+  if (isGitKind || repoATag) {
+    let repoName = dTag || title || 'Repository';
+    let repoPubkey = event.pubkey;
+    let repoIdentifier = dTag || '';
+
+    if (repoATag) {
+      const parts = repoATag[1].split(':');
+      repoPubkey = parts[1] || repoPubkey;
+      repoIdentifier = parts.slice(2).join(':') || repoIdentifier;
+      repoName = repoIdentifier || repoName;
+    }
+
+    const repoNaddr = encodeNaddr(repoPubkey, 30617, repoIdentifier);
+    const eventNaddr = (event.kind >= 30000 && event.kind < 40000) ? encodeNaddr(event.pubkey, event.kind, dTag) : null;
+    const authorNpub = encodeNpub(event.pubkey);
+    const repoOwnerNpub = encodeNpub(repoPubkey);
+
+    const gitworkshopRepoUrl = repoNaddr ? `https://gitworkshop.dev/r/${repoNaddr}` : (repoPubkey && repoIdentifier ? `https://gitworkshop.dev/${repoOwnerNpub}/${repoIdentifier}` : null);
+    
+    let gitworkshopUrl = null;
+    if (event.kind === 30617 || event.kind === 30618) {
+      gitworkshopUrl = (eventNaddr ? `https://gitworkshop.dev/r/${eventNaddr}` : null) || gitworkshopRepoUrl;
+    } else if (event.kind === 1618) {
+      gitworkshopUrl = repoNaddr ? `https://gitworkshop.dev/r/${repoNaddr}/pulls/${event.id}` : `https://gitworkshop.dev/p/${event.id}`;
+    } else if (event.kind === 1621) {
+      gitworkshopUrl = repoNaddr ? `https://gitworkshop.dev/r/${repoNaddr}/issues/${event.id}` : `https://gitworkshop.dev/p/${event.id}`;
+    } else if (event.kind === 1617) {
+      gitworkshopUrl = `https://gitworkshop.dev/p/${event.id}`;
+    } else {
+      gitworkshopUrl = gitworkshopRepoUrl || `https://gitworkshop.dev/p/${event.id}`;
+    }
+
+    // Extract commits, branches, clone URLs, web URLs, relays
+    const cloneUrls = getAllTagValues(tags, 'clone');
+    const webUrls = getAllTagValues(tags, 'web');
+    const relayUrls = [...getAllTagValues(tags, 'relays'), ...getAllTagValues(tags, 'server')];
+    const maintainers = getAllTagValues(tags, 'maintainers');
+
+    // Extract commit hashes (from commit tags, r tags, HEAD refs, or 40-char hex in content/tags)
+    const commitHashes = new Set();
+    tags.forEach((t) => {
+      if (!Array.isArray(t)) return;
+      const tagKey = t[0];
+      const tagVal = t[1];
+      if (tagKey === 'commit' && tagVal && /^[0-9a-f]{7,40}$/i.test(tagVal)) {
+        commitHashes.add(tagVal);
+      } else if (tagKey === 'r' && tagVal && /^[0-9a-f]{40}$/i.test(tagVal)) {
+        commitHashes.add(tagVal);
+      } else if (tagKey.startsWith('refs/heads/') && tagVal && /^[0-9a-f]{40}$/i.test(tagVal)) {
+        commitHashes.add(tagVal);
+      }
+    });
+
+    const commitBadges = Array.from(commitHashes).map((hash) => ({
+      hash,
+      shortHash: hash.slice(0, 7),
+      url: repoNaddr ? `https://gitworkshop.dev/r/${repoNaddr}/commit/${hash}` : `https://gitworkshop.dev/r/${hash}`
+    }));
+
+    // Extract branch
+    let branch = getTagValue(tags, 'branch');
+    const headTag = getTagValue(tags, 'HEAD');
+    if (!branch && headTag) {
+      const match = headTag.match(/refs\/heads\/(.+)$/);
+      if (match) branch = match[1];
+    }
+    if (!branch) {
+      const refTag = tags.find((t) => Array.isArray(t) && t[0].startsWith('refs/heads/'));
+      if (refTag) {
+        branch = refTag[0].replace('refs/heads/', '');
+      }
+    }
+
+    // Extract PR/Issue subject or title
+    let subject = title || getTagValue(tags, 'subject') || getTagValue(tags, 'name') || '';
+    if (!subject && content) {
+      const prMatch = content.match(/^git\s+Pull\s+Request:\s*(.+)$/im);
+      if (prMatch) {
+        subject = prMatch[1].trim();
+      } else if (!title) {
+        const firstLine = content.split('\n')[0].trim();
+        if (firstLine && firstLine.length < 80) subject = firstLine;
+      }
+    }
+
+    gitContext = {
+      isGit: true,
+      kind: event.kind,
+      repoName,
+      repoPubkey,
+      repoIdentifier,
+      repoNaddr,
+      repoOwnerNpub,
+      gitworkshopRepoUrl,
+      gitworkshopUrl,
+      authorNpub,
+      cloneUrls,
+      webUrls,
+      relayUrls,
+      maintainers,
+      commitBadges,
+      branch,
+      subject: subject || repoName
+    };
+
+    repoContext = {
+      type: 'nip34',
+      name: repoName,
+      coordinate: repoATag ? repoATag[1] : (eventNaddr || repoName),
+      pubkey: repoPubkey,
+      title: subject || repoName,
+      url: gitworkshopUrl
+    };
+  } else if (ghTag) {
+    const ghUrl = ghTag[1];
+    const ghMatch = ghUrl.match(/github\.com\/([^/]+\/[^/]+)(?:\/(?:blob|tree|issues|pull)\/[^/]+\/(.+)|(?:\/(?:blob|tree|issues|pull)\/(.+)))?/i);
+    if (ghMatch) {
+      const repo = ghMatch[1];
+      const filePath = ghMatch[2] || ghMatch[3] || '';
+      repoContext = {
+        type: 'github',
+        url: ghUrl,
+        repo,
+        path: filePath,
+        name: repo,
+        title: filePath ? `${repo}: ${filePath.split('/').pop()}` : repo
+      };
+    } else {
+      repoContext = {
+        type: 'url',
+        url: ghUrl,
+        name: ghUrl.replace(/^https?:\/\/(?:www\.)?/, ''),
+        title: ghUrl
+      };
+    }
+  }
+
+  // Quoted events extraction
+  const quotes = [];
+  const quoteIds = new Set();
+
+  // 1. Check 'q' tags and 'e' tags with mention marker
+  tags.forEach((t) => {
+    if (!Array.isArray(t)) return;
+    if (t[0] === 'q' && t[1]) {
+      quoteIds.add(t[1]);
+      quotes.push({ id: t[1], relay: t[2] || null, pubkey: t[3] || null });
+    } else if (t[0] === 'e' && t[1] && (t[3] === 'mention' || t[3] === 'quote')) {
+      if (!quoteIds.has(t[1])) {
+        quoteIds.add(t[1]);
+        quotes.push({ id: t[1], relay: t[2] || null, pubkey: null });
+      }
+    }
+  });
+
+  // 2. Check content for inline mentions (nostr:nevent1..., nostr:note1..., [event:nevent1...])
+  const quoteRegex = /(?:nostr:)?\b((?:nevent|note)1[0-9a-z]{20,})\b/g;
+  let qMatch;
+  while ((qMatch = quoteRegex.exec(content)) !== null) {
+    const bech32 = qMatch[1];
+    try {
+      const decoded = nip19.decode(bech32);
+      let targetId = null;
+      let targetPubkey = null;
+      if (decoded.type === 'note') {
+        targetId = decoded.data;
+      } else if (decoded.type === 'nevent') {
+        targetId = decoded.data.id;
+        targetPubkey = decoded.data.author || null;
+      }
+      if (targetId && !quoteIds.has(targetId) && targetId !== event.id) {
+        quoteIds.add(targetId);
+        quotes.push({ id: targetId, pubkey: targetPubkey, bech32 });
+      }
+    } catch (_) {}
+  }
+
   const firstIsbn = (items.find((i) => i.type === 'isbn') || {}).value || isbn;
   const firstImdb = (items.find((i) => i.type === 'imdb') || {}).value || imdb;
   const firstTmdb = (items.find((i) => i.type === 'tmdb') || {}).value || tmdb;
@@ -782,6 +1199,15 @@ export function extractEventMetadata(event, baseUrl = 'https://blog.emre.xyz') {
     dTag,
     externalUrl,
     items,
-    itemCount: items.length
+    itemCount: items.length,
+    appContext,
+    appHandlerContext,
+    snippetContext,
+    reactionContext,
+    gitContext,
+    labelContext,
+    repoContext,
+    quotes
   };
 }
+

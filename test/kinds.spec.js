@@ -372,6 +372,162 @@ describe('kinds classification engine', () => {
         imdbUrl: 'https://www.imdb.com/title/tt0062622'
       });
     });
+
+    it('classifies Kind 3 follow list as lists:people', () => {
+      const event = {
+        kind: 3,
+        tags: [
+          ['p', '82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2']
+        ]
+      };
+      expect(classifyEvent(event)).toEqual({ category: 'lists', subCategory: 'people' });
+    });
+
+    it('extracts appContext for Kind 30078 app data', () => {
+      const event = {
+        kind: 30078,
+        tags: [
+          ['d', 'ditto:metadata'],
+          ['title', 'Ditto Metadata']
+        ],
+        content: 'AvBNOIR0iO2y6/H81YQW6dwuOIuq+rnWN+Ljn9bx5EL1IUEezmgr9Ubn7sEt1QIgXIOPzX1X'
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.appContext).toBeDefined();
+      expect(meta.appContext.isAppData).toBe(true);
+      expect(meta.appContext.appName).toBe('Ditto');
+      expect(meta.appContext.isEncryptedOrRaw).toBe(true);
+    });
+
+    it('extracts labelContext and GitHub target for Kind 1985 review', () => {
+      const event = {
+        kind: 1985,
+        tags: [
+          ['L', 'nip'],
+          ['l', 'approved', 'nip'],
+          ['i', 'https://github.com/nostr-protocol/nips/blob/master/C0.md']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.labelContext).toBeDefined();
+      expect(meta.labelContext.isLabelOrReview).toBe(true);
+      expect(meta.labelContext.target.type).toBe('github');
+      expect(meta.labelContext.target.repo).toBe('nostr-protocol/nips');
+      expect(meta.labelContext.target.fileName).toBe('C0.md');
+      expect(meta.labelContext.labels[0].value).toBe('approved');
+    });
+
+    it('extracts repoContext for comments referencing GitHub repo', () => {
+      const event = {
+        kind: 1,
+        content: 'I was planning to start this type of project.',
+        tags: [
+          ['r', 'https://github.com/owner/cool-repo']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.repoContext).toBeDefined();
+      expect(meta.repoContext.type).toBe('github');
+      expect(meta.repoContext.repo).toBe('owner/cool-repo');
+      expect(meta.repoContext.name).toBe('owner/cool-repo');
+    });
+
+    it('extracts gitContext and generates gitworkshop links for NIP-34 Git events', () => {
+      const repoPubkey = '781a1527055f74c1f70230f10384609b34548f8ab6a0a6caa74025827f9fdae5';
+      const event = {
+        id: '98ff1e09e02bc7420e39d714290898c92c6ebe6b',
+        pubkey: '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a',
+        kind: 1618,
+        content: 'git Pull Request: Turkish translations added for UI\n\nas nostr.org.tr developer...',
+        tags: [
+          ['a', `30617:${repoPubkey}:ditto`],
+          ['commit', '98ff1e09e02bc7420e39d714290898c92c6ebe6b']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.gitContext).toBeDefined();
+      expect(meta.gitContext.isGit).toBe(true);
+      expect(meta.gitContext.repoName).toBe('ditto');
+      expect(meta.gitContext.subject).toBe('Turkish translations added for UI');
+      expect(meta.gitContext.gitworkshopUrl).toContain('gitworkshop.dev/r/');
+      expect(meta.gitContext.gitworkshopUrl).toContain('/pulls/98ff1e09e02bc7420e39d714290898c92c6ebe6b');
+      expect(meta.gitContext.commitBadges[0].shortHash).toBe('98ff1e0');
+    });
+
+    it('extracts appHandlerContext and generates nostrhub link for Kind 31990', () => {
+      const event = {
+        id: 'app_evt_1',
+        pubkey: '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a',
+        kind: 31990,
+        tags: [
+          ['d', '5wo5lk0l'],
+          ['k', '1337']
+        ],
+        content: JSON.stringify({
+          name: 'Snippets',
+          about: 'An open-source, decentralized code snippet sharing platform',
+          picture: 'https://blossom.primal.net/img.png',
+          website: 'https://snips.emre.xyz',
+          nip05: 'delirehberi@emre.xyz'
+        })
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.appHandlerContext).toBeDefined();
+      expect(meta.appHandlerContext.name).toBe('Snippets');
+      expect(meta.appHandlerContext.website).toBe('https://snips.emre.xyz');
+      expect(meta.appHandlerContext.nostrhubUrl).toContain('https://nostrhub.io/a/');
+      expect(meta.appHandlerContext.supportedKinds).toContain(1337);
+    });
+
+    it('extracts snippetContext and generates snips.emre.xyz link for Kind 1337', () => {
+      const event = {
+        id: '3092759dac162b55606ba8339ce1400cf62a0fc1e45d6e3d1d2e0a831d0e59cd',
+        kind: 1337,
+        content: 'print("hello")',
+        tags: [
+          ['title', 'rotatevideo.ipynb'],
+          ['l', 'python']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.snippetContext).toBeDefined();
+      expect(meta.snippetContext.title).toBe('rotatevideo.ipynb');
+      expect(meta.snippetContext.language).toBe('python');
+      expect(meta.snippetContext.snipsUrl).toBe('https://snips.emre.xyz/#/s/3092759dac162b55606ba8339ce1400cf62a0fc1e45d6e3d1d2e0a831d0e59cd');
+    });
+
+    it('extracts reactionContext for Kind 7 reactions', () => {
+      const event = {
+        id: 'reaction_1',
+        kind: 7,
+        content: '+',
+        tags: [
+          ['e', '909b685cf263c6547bbced5dbc58fd5954f7e1c9368d1ec1d70190278a5a3343'],
+          ['p', '781a1527055f74c1f70230f10384609b34548f8ab6a0a6caa74025827f9fdae5'],
+          ['a', '30617:781a1527055f74c1f70230f10384609b34548f8ab6a0a6caa74025827f9fdae5:ditto']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.reactionContext).toBeDefined();
+      expect(meta.reactionContext.reaction).toBe('+');
+      expect(meta.reactionContext.targetEventId).toBe('909b685cf263c6547bbced5dbc58fd5954f7e1c9368d1ec1d70190278a5a3343');
+    });
+
+    it('extracts quotes from note content and tags', () => {
+      const event = {
+        id: 'note_with_quote',
+        kind: 1,
+        content: 'Check out this note: nostr:note1z940y6x2570n8fau900k7t5j3r6zfq60h8xuv809l93y2s247e6seepupz\nAlso see [event:note1z940y6x2570n8fau900k7t5j3r6zfq60h8xuv809l93y2s247e6seepupz]',
+        tags: [
+          ['q', 'target_quote_id']
+        ]
+      };
+      const meta = extractEventMetadata(event);
+      expect(meta.quotes).toBeDefined();
+      expect(meta.quotes.length).toBeGreaterThan(0);
+      expect(meta.quotes.some((q) => q.id === 'target_quote_id')).toBe(true);
+    });
   });
 });
+
 

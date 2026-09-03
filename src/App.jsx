@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { nip19 } from 'nostr-tools';
 import { FilterBar } from './components/FilterBar.jsx';
+import { CommunityBadge } from './components/CommunityBadge.jsx';
 import { EventCard } from './components/EventCard.jsx';
 import { classifyEvent } from './kinds.js';
 import { useProfiles } from './hooks/useProfiles.js';
@@ -16,12 +17,12 @@ const DEFAULT_RELAYS = [
 ];
 
 export function App() {
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('notes');
   const [activeSub, setActiveSub] = useState('all');
   const [singlePostId, setSinglePostId] = useState(null);
 
   const sentinelRef = useRef(null);
-  const fetchedCategoriesRef = useRef(new Set());
+  const fetchedCategoriesRef = useRef(new Set(['notes']));
 
   const { profileMap, requestProfiles } = useProfiles(DEFAULT_RELAYS);
   useTheme(DEFAULT_PUBKEY, DEFAULT_RELAYS);
@@ -55,7 +56,7 @@ export function App() {
       } else {
         setSinglePostId(null);
         const params = new URLSearchParams(window.location.search);
-        setActiveCategory(params.get('kind') || 'all');
+        setActiveCategory(params.get('kind') || 'notes');
         setActiveSub(params.get('sub') || 'all');
       }
     };
@@ -72,7 +73,7 @@ export function App() {
       setActiveSub(sub);
 
       const params = new URLSearchParams(window.location.search);
-      if (cat === 'all') params.delete('kind');
+      if (cat === 'notes') params.delete('kind');
       else params.set('kind', cat);
 
       if (sub === 'all') params.delete('sub');
@@ -128,6 +129,7 @@ export function App() {
   return (
     <div className="container">
       <emre-header active-page="nostr"></emre-header>
+      <CommunityBadge />
 
       {singlePostId ? (
         <>

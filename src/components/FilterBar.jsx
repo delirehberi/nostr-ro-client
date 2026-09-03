@@ -3,7 +3,7 @@ import { CATEGORIES_CONFIG } from '../kinds.js';
 
 export function FilterBar({
   categoryCounts = {},
-  activeCategory = 'all',
+  activeCategory = 'notes',
   activeSub = 'all',
   onSelectCategory,
 }) {
