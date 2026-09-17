@@ -7,14 +7,10 @@ import { classifyEvent } from './kinds.js';
 import { useProfiles } from './hooks/useProfiles.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useNostrFeed } from './hooks/useNostrFeed.js';
+import { getDefaultRelays } from './relays.js';
 
 const DEFAULT_PUBKEY = '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a';
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://relay.ditto.pub',
-  'wss://nostr-pub.wellorder.net',
-];
+const DEFAULT_RELAYS = getDefaultRelays();
 
 export function App() {
   const [activeCategory, setActiveCategory] = useState('notes');
