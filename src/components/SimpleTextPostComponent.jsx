@@ -116,7 +116,12 @@ export function SimpleTextPostComponent({ event, profileMap, eventMap }) {
 
       {meta.repoContext && (
         <div className="repo-context-banner">
-          <span className="repo-context-icon">💻</span>
+          <span className="repo-context-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+          </span>
           <span className="repo-context-label">Commented on repository:</span>
           <a
             href={meta.repoContext.url || `https://njump.me/${meta.repoContext.coordinate || meta.repoContext.name}`}

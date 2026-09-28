@@ -31,7 +31,11 @@ export function QuotedEventCard({ quoteId, quoteBech32, profileMap, eventMap }) 
   if (!targetEvent) {
     return (
       <div className="quoted-event-card quoted-placeholder">
-        <span className="quoted-icon">💬</span>
+        <span className="quoted-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </span>
         <span className="quoted-placeholder-text">Quoted Event:</span>
         <a
           href={`https://njump.me/${bech32Id || targetId}`}
@@ -64,7 +68,13 @@ export function QuotedEventCard({ quoteId, quoteBech32, profileMap, eventMap }) 
 
       {meta.gitContext && (
         <div className="quoted-git-banner">
-          <span>💻 <strong>{meta.gitContext.repoName}</strong>: {meta.gitContext.subject}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle', opacity: 0.8 }}>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <strong>{meta.gitContext.repoName}</strong>: {meta.gitContext.subject}
+          </span>
         </div>
       )}
 
