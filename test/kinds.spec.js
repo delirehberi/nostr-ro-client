@@ -4,6 +4,9 @@ import {
   extractEventMetadata,
   extractRating,
   getKindLabel,
+  extractMedia,
+  eventAddress,
+  isNewerVersion,
   CATEGORIES_CONFIG
 } from '../src/kinds.js';
 
@@ -528,6 +531,72 @@ describe('kinds classification engine', () => {
       expect(meta.quotes.some((q) => q.id === 'target_quote_id')).toBe(true);
     });
   });
+
+  describe('extractMedia', () => {
+    it('reads imeta tags of a kind 20 picture', () => {
+      const event = {
+        id: 'p', kind: 20, pubkey: 'a', created_at: 1, content: 'Sunset',
+        tags: [
+          ['imeta', 'url https://img.example/a.jpg', 'm image/jpeg', 'dim 800x600', 'alt A sunset', 'blurhash LKO2'],
+          ['imeta', 'url https://img.example/b'],
+        ],
+      };
+      expect(extractMedia(event)).toEqual([
+        { url: 'https://img.example/a.jpg', type: 'image', mime: 'image/jpeg', dim: '800x600', alt: 'A sunset', blurhash: 'LKO2' },
+        { url: 'https://img.example/b', type: 'image', mime: null, dim: null, alt: null, blurhash: null },
+      ]);
+      expect(extractEventMetadata(event).media).toHaveLength(2);
+    });
+
+    it('treats kind 21/22 imeta without a mime type as video', () => {
+      const event = { kind: 21, tags: [['imeta', 'url https://v.example/clip']] };
+      expect(extractMedia(event)[0].type).toBe('video');
+    });
+
+    it('reads the url and m tags of kind 1063 file metadata', () => {
+      const event = {
+        kind: 1063, content: 'My clip',
+        tags: [['url', 'https://files.example/clip.bin'], ['m', 'video/mp4'], ['x', 'abc']],
+      };
+      expect(extractMedia(event)).toEqual([
+        { url: 'https://files.example/clip.bin', type: 'video', mime: 'video/mp4', dim: null, alt: 'My clip', blurhash: null },
+      ]);
+    });
+
+    it('skips non-http urls, non-media mime types and duplicates', () => {
+      const event = {
+        kind: 1,
+        tags: [
+          ['imeta', 'url javascript:alert(1)', 'm image/png'],
+          ['imeta', 'url https://x.example/doc.pdf', 'm application/pdf'],
+          ['imeta', 'url https://x.example/a.png'],
+          ['imeta', 'url https://x.example/a.png'],
+        ],
+      };
+      expect(extractMedia(event).map((m) => m.url)).toEqual(['https://x.example/a.png']);
+    });
+  });
+
+  describe('eventAddress', () => {
+    it('keys replaceable kinds by kind and pubkey', () => {
+      expect(eventAddress({ kind: 0, pubkey: 'p', tags: [] })).toBe('0:p');
+      expect(eventAddress({ kind: 10003, pubkey: 'p', tags: [['d', 'ignored']] })).toBe('10003:p');
+    });
+
+    it('keys addressable kinds by kind, pubkey and d tag', () => {
+      expect(eventAddress({ kind: 30001, pubkey: 'p', tags: [['d', 'books-read']] })).toBe('30001:p:books-read');
+      expect(eventAddress({ kind: 30023, pubkey: 'p', tags: [] })).toBe('30023:p:');
+    });
+
+    it('returns null for regular events', () => {
+      expect(eventAddress({ kind: 1, pubkey: 'p', tags: [] })).toBeNull();
+      expect(eventAddress({ kind: 20000, pubkey: 'p', tags: [] })).toBeNull();
+    });
+
+    it('prefers the newest version, then the lowest id', () => {
+      expect(isNewerVersion({ id: 'b', created_at: 2 }, { id: 'a', created_at: 1 })).toBe(true);
+      expect(isNewerVersion({ id: 'b', created_at: 1 }, { id: 'a', created_at: 1 })).toBe(false);
+      expect(isNewerVersion({ id: 'a', created_at: 1 }, { id: 'b', created_at: 1 })).toBe(true);
+    });
+  });
 });
-
-

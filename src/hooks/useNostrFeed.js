@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
-import { classifyEvent } from '../kinds.js';
-import { queryRelays, subscribeRelays, chunk } from '../relayClient.js';
+import { classifyEvent, eventAddress, isNewerVersion } from '../kinds.js';
+import { queryRelays, subscribeRelays, chunk, nextPageCursor } from '../relayClient.js';
 import { acceptEvent } from '../eventValidation.js';
 
 const CATEGORY_KINDS_MAP = {
@@ -15,6 +15,49 @@ const CATEGORY_KINDS_MAP = {
 };
 
 const MAX_IDS_PER_REQUEST = 50;
+const INITIAL_LIMIT = 100;
+const PAGE_LIMIT = 50;
+const DELETION_LIMIT = 500;
+
+/**
+ * Ids of events hidden by NIP-09 deletion requests (kind 5) found in `events`.
+ * `e` tags delete one event; `a` tags delete every version of an address up to
+ * the request's `created_at`. A request only counts against its own author's events.
+ *
+ * @param {Iterable<object>} events
+ * @returns {Set<string>}
+ */
+export function deletedEventIds(events) {
+  const all = Array.from(events);
+  const deletedIds = new Map(); // event id -> deleter pubkey
+  const deletedAddresses = new Map(); // address -> newest deletion created_at
+  all.forEach((e) => {
+    if (e.kind !== 5 || !Array.isArray(e.tags)) return;
+    e.tags.forEach((tag) => {
+      if (!Array.isArray(tag) || !tag[1]) return;
+      if (tag[0] === 'e') {
+        deletedIds.set(tag[1], e.pubkey);
+      } else if (tag[0] === 'a') {
+        const [kind, author] = tag[1].split(':');
+        if (author !== e.pubkey) return;
+        // Plain replaceable kinds have no d tag: `10003:pubkey` (sometimes written with a trailing colon).
+        const address = Number(kind) >= 30000 && Number(kind) < 40000 ? tag[1] : `${kind}:${author}`;
+        const prev = deletedAddresses.get(address);
+        if (prev === undefined || e.created_at > prev) deletedAddresses.set(address, e.created_at);
+      }
+    });
+  });
+
+  const hidden = new Set();
+  all.forEach((e) => {
+    if (deletedIds.has(e.id) && deletedIds.get(e.id) === e.pubkey) hidden.add(e.id);
+    const address = eventAddress(e);
+    if (address && deletedAddresses.has(address) && e.created_at <= deletedAddresses.get(address)) {
+      hidden.add(e.id);
+    }
+  });
+  return hidden;
+}
 
 export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   const [events, setEvents] = useState([]);
@@ -68,22 +111,27 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     [relays, onRequestProfiles]
   );
 
+  /**
+   * Merge events into eventMap and rebuild the feed. `cursorKey`/`cursor` set the
+   * `until` cursor of the paging query ('all' or a category) the events came from.
+   */
   const processNewEvents = useCallback(
-    (newEventsList, cursorKey = null) => {
+    (newEventsList, cursorKey = null, cursor = undefined) => {
       const pubkeysToRequest = [];
       const parentIdsToRequest = [];
+
+      if (cursorKey && cursor !== undefined) {
+        const current = cursorsRef.current.get(cursorKey);
+        if (current === undefined || cursor < current) cursorsRef.current.set(cursorKey, cursor);
+      }
 
       newEventsList.forEach((e) => {
         if (!eventMapRef.current.has(e.id)) {
           eventMapRef.current.set(e.id, e);
         }
-        if (cursorKey && e.pubkey === pubkey) {
-          const current = cursorsRef.current.get(cursorKey);
-          if (current === undefined || e.created_at < current) {
-            cursorsRef.current.set(cursorKey, e.created_at);
-          }
-        }
         if (e.pubkey) pubkeysToRequest.push(e.pubkey);
+        // Deletion requests only reference what they delete; don't fetch it.
+        if (e.kind === 5) return;
 
         // Check if Repost (Kind 6 or 16) with embedded event JSON in content
         if ((e.kind === 6 || e.kind === 16) && e.content && e.content.trim().startsWith('{')) {
@@ -137,13 +185,34 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       });
 
       // The feed only lists the owner's events; everything else (reply parents,
-      // quotes, reposted notes) stays in eventMap purely for lookups.
-      const sorted = Array.from(eventMapRef.current.values())
-        .filter((e) => e.pubkey === pubkey)
+      // quotes, reposted notes) stays in eventMap purely for lookups. Replaceable
+      // and addressable events only show their newest version, and events removed
+      // by a deletion request (kind 5) are hidden everywhere.
+      const all = Array.from(eventMapRef.current.values());
+      const deleted = deletedEventIds(all);
+      const latestByAddress = new Map();
+      all.forEach((e) => {
+        if (deleted.has(e.id)) return;
+        const address = eventAddress(e);
+        if (!address) return;
+        const current = latestByAddress.get(address);
+        if (!current || isNewerVersion(e, current)) latestByAddress.set(address, e);
+      });
+
+      const sorted = all
+        .filter((e) => {
+          if (e.pubkey !== pubkey || e.kind === 5 || deleted.has(e.id)) return false;
+          const address = eventAddress(e);
+          return !address || latestByAddress.get(address) === e;
+        })
         .sort((a, b) => b.created_at - a.created_at);
 
+      // Older versions stay reachable by id (e.g. an `e` reference to a specific version).
+      const visibleMap = new Map(eventMapRef.current);
+      deleted.forEach((id) => visibleMap.delete(id));
+
       setEvents(sorted);
-      setEventMap(new Map(eventMapRef.current));
+      setEventMap(visibleMap);
 
       if (onRequestProfiles && pubkeysToRequest.length > 0) {
         onRequestProfiles(pubkeysToRequest);
@@ -166,12 +235,16 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
     const filter = {
       authors: [pubkey],
-      limit: 100,
+      limit: INITIAL_LIMIT,
     };
 
-    queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming, ok }) => {
+    Promise.all([
+      queryRelays(relays, filter, { subPrefix: 'init' }),
+      // Deletion requests are rarely in the newest page, but they hide older events.
+      queryRelays(relays, { authors: [pubkey], kinds: [5], limit: DELETION_LIMIT }, { subPrefix: 'del' }),
+    ]).then(([{ events: incoming, ok, relays: relayStats }, { events: deletions }]) => {
       if (!isMounted) return;
-      processNewEvents(incoming, 'all');
+      processNewEvents([...deletions, ...incoming], 'all', nextPageCursor(relayStats, INITIAL_LIMIT));
       if (!ok && incoming.length === 0) {
         setError('Could not reach the Nostr relays.');
       }
@@ -218,13 +291,13 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
       setIsLoadingMore(true);
 
-      const filter = { authors: [pubkey], until: cursor - 1, limit: 50 };
+      const filter = { authors: [pubkey], until: cursor - 1, limit: PAGE_LIMIT };
       if (key !== 'all') filter.kinds = CATEGORY_KINDS_MAP[key];
 
-      const { events: newItems, ok } = await queryRelays(relays, filter, { subPrefix: 'more' });
+      const { events: newItems, ok, relays: relayStats } = await queryRelays(relays, filter, { subPrefix: 'more' });
 
       if (newItems.length > 0) {
-        processNewEvents(newItems, key);
+        processNewEvents(newItems, key, nextPageCursor(relayStats, PAGE_LIMIT));
         setError(null);
       } else if (!ok) {
         setError('Could not load older events from the Nostr relays.');
@@ -247,12 +320,12 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       const filter = {
         authors: [pubkey],
         kinds,
-        limit: 100,
+        limit: INITIAL_LIMIT,
       };
 
-      const { events: incoming } = await queryRelays(relays, filter, { subPrefix: 'cat' });
+      const { events: incoming, relays: relayStats } = await queryRelays(relays, filter, { subPrefix: 'cat' });
       if (incoming.length > 0) {
-        processNewEvents(incoming, category);
+        processNewEvents(incoming, category, nextPageCursor(relayStats, INITIAL_LIMIT));
       }
     },
     [pubkey, relays, processNewEvents]

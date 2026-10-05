@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { queryRelays, subscribeRelays, chunk } from '../src/relayClient.js';
+import { queryRelays, subscribeRelays, chunk, nextPageCursor } from '../src/relayClient.js';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { installMockWebSocket } from './helpers/mockWebSocket.js';
 
@@ -66,6 +66,41 @@ describe('queryRelays', () => {
     controller.abort();
     const { ok } = await promise;
     expect(ok).toBe(false);
+  });
+});
+
+describe('queryRelays relay stats', () => {
+  it('reports per-relay counts and oldest created_at', async () => {
+    installMockWebSocket((url, filter, ws) => {
+      const times = url.endsWith('a') ? [30, 20] : [25, 5, 1];
+      times.forEach((t) => ws.emit(['EVENT', ws.subId, { ...ev(`${url}-${t}`), created_at: t }]));
+      ws.emit(['EOSE', ws.subId]);
+    });
+    const { relays } = await queryRelays(['wss://a', 'wss://b'], {}, { verify: false });
+    expect(relays).toEqual([
+      { url: 'wss://a', ok: true, count: 2, oldest: 20 },
+      { url: 'wss://b', ok: true, count: 3, oldest: 1 },
+    ]);
+  });
+});
+
+describe('nextPageCursor', () => {
+  it('starts after the newest oldest event among relays that returned a full page', () => {
+    const stats = [
+      { count: 100, oldest: 900 },
+      { count: 100, oldest: 100 },
+      { count: 40, oldest: 5 },
+    ];
+    expect(nextPageCursor(stats, 100)).toBe(900);
+  });
+
+  it('uses the overall oldest event when no relay returned a full page', () => {
+    expect(nextPageCursor([{ count: 3, oldest: 50 }, { count: 7, oldest: 20 }], 100)).toBe(20);
+  });
+
+  it('returns undefined when nothing came back', () => {
+    expect(nextPageCursor([{ count: 0, oldest: null }], 100)).toBeUndefined();
+    expect(nextPageCursor([], 100)).toBeUndefined();
   });
 });
 
