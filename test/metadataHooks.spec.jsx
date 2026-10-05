@@ -1,9 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
+// Newer Node versions define their own (non-functional) global localStorage, which shadows
+// jsdom's. Use an explicit in-memory implementation so the tests do not depend on the runtime.
+function installMemoryStorage() {
+  const store = new Map();
+  vi.stubGlobal('localStorage', {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+  });
+}
+
 beforeEach(() => {
   vi.resetModules();
-  localStorage.clear();
+  installMemoryStorage();
 });
 
 afterEach(() => {
