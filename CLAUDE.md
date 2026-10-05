@@ -38,13 +38,13 @@ src/
   styles.css                    — CSS custom properties, responsive card styles, dark mode
   App.jsx                       — Top-level SPA layout and URL state router
   main.jsx                      — React 19 root mount
-  index.js                      — Cloudflare Worker static asset handler
+  index.js                      — Cloudflare Worker static asset handler (cache + security headers)
 test/
   components.spec.jsx           — Component unit and integration tests
   kinds.spec.js                 — Classification & metadata extraction tests
   theme.spec.js                 — Theme parser and CSS generation tests
   relays.spec.js / community-badge.spec.jsx — Relay URL and CommunityBadge tests
-  index.spec.js                 — Worker asset and cache handler tests
+  index.spec.js                 — Worker asset, cache and header tests
 index.html                      — SPA HTML entry with emre.xyz header/footer custom elements
 vite.config.js                  — Vite bundler and Vitest configuration
 wrangler.jsonc                  — Cloudflare Worker configuration with SPA static assets
@@ -52,7 +52,7 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 
 ## Architecture
 
-- **No backend logic.** `src/index.js` is a Worker that only proxies to `env.ASSETS` (with a scheduled handler that clears optional KV `CACHE` keys). All Nostr work happens in the browser.
+- **No backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is report-only). All Nostr work happens in the browser.
 - **Relays** (`src/relays.js`): the client talks to a single cache relay (`wss://cache.nostr.org.tr?relays=...`) that proxies upstream relays; `getDefaultRelays()` builds that URL. Hooks open raw `WebSocket`s and speak NIP-01 (`REQ`/`EVENT`/`EOSE`) directly — `nostr-tools` is used only for NIP-19 encoding.
 - **Data flow**: `App.jsx` hardcodes the owner pubkey and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
 - **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` in `useNostrFeed.js` maps categories to relay kind filters. Adding a kind/category usually means touching `classifyEvent`, `CATEGORIES_CONFIG`, `CATEGORY_KINDS_MAP`, and `EventCard`, plus a case in `test/kinds.spec.js`.

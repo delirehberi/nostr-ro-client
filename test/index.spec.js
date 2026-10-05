@@ -1,40 +1,60 @@
 import { describe, it, expect, vi } from 'vitest';
 import worker from '../src/index.js';
 
+const env = (response) => ({ ASSETS: { fetch: vi.fn().mockResolvedValue(response) } });
+
 describe('nostr client worker & static asset handler', () => {
-  it('handles scheduled cache purge', async () => {
-    const mockCache = {
-      delete: vi.fn().mockResolvedValue(true),
-    };
-    const mockEnv = {
-      CACHE: mockCache,
-      PUBKEY: '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a',
-    };
-
-    await worker.scheduled({}, mockEnv);
-    expect(mockCache.delete).toHaveBeenCalledWith('homepage:v5');
-    expect(mockCache.delete).toHaveBeenCalledWith(`theme:${mockEnv.PUBKEY}`);
-  });
-
   it('serves static assets via env.ASSETS', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(new Response('SPA HTML'));
-    const mockEnv = {
-      ASSETS: {
-        fetch: mockFetch,
-      },
-    };
-
+    const asset = new Response('SPA HTML', { headers: { 'Content-Type': 'text/html' } });
+    const mockEnv = env(asset);
     const request = new Request('http://example.com/');
     const response = await worker.fetch(request, mockEnv);
-    expect(mockFetch).toHaveBeenCalledWith(request);
-    expect(response).toBeDefined();
+    expect(mockEnv.ASSETS.fetch).toHaveBeenCalledWith(request);
+    expect(await response.text()).toBe('SPA HTML');
+  });
+
+  it('caches hashed assets forever and makes HTML revalidate', async () => {
+    const js = await worker.fetch(
+      new Request('http://example.com/assets/index-abc123.js'),
+      env(new Response('x', { headers: { 'Content-Type': 'text/javascript' } }))
+    );
+    expect(js.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+
+    const html = await worker.fetch(
+      new Request('http://example.com/'),
+      env(new Response('<html>', { headers: { 'Content-Type': 'text/html' } }))
+    );
+    expect(html.headers.get('Cache-Control')).toBe('no-cache');
+  });
+
+  it('does not cache the SPA fallback for a missing /assets/ file as immutable', async () => {
+    const response = await worker.fetch(
+      new Request('http://example.com/assets/missing.js'),
+      env(new Response('<html>', { headers: { 'Content-Type': 'text/html' } }))
+    );
+    expect(response.headers.get('Cache-Control')).toBe('no-cache');
+  });
+
+  it('adds security headers and preserves status', async () => {
+    const response = await worker.fetch(
+      new Request('http://example.com/nope'),
+      env(new Response('nf', { status: 404, headers: { 'Content-Type': 'text/html' } }))
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+    const csp = response.headers.get('Content-Security-Policy-Report-Only');
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain('wss://cache.nostr.org.tr');
+  });
+
+  it('has no scheduled handler (the KV cache it purged is gone)', () => {
+    expect(worker.scheduled).toBeUndefined();
   });
 
   it('returns fallback response when env.ASSETS is not available', async () => {
-    const request = new Request('http://example.com/');
-    const response = await worker.fetch(request, {});
+    const response = await worker.fetch(new Request('http://example.com/'), {});
     expect(response.status).toBe(200);
-    const text = await response.text();
-    expect(text).toBe('Nostr Client SPA');
+    expect(await response.text()).toBe('Nostr Client SPA');
   });
 });
