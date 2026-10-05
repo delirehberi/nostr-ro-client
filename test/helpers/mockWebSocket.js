@@ -3,8 +3,9 @@ import { vi } from 'vitest';
 /**
  * Install a fake global WebSocket. `script(url, filter, socket)` runs after the
  * client sends its REQ and can reply through `socket.emit(frame)`.
+ * With `autoOpen: false` sockets never reach `onopen` (simulates unreachable relays).
  */
-export function installMockWebSocket(script) {
+export function installMockWebSocket(script, { autoOpen = true } = {}) {
   const sockets = [];
 
   class MockWebSocket {
@@ -13,7 +14,7 @@ export function installMockWebSocket(script) {
       this.sent = [];
       this.closed = false;
       sockets.push(this);
-      queueMicrotask(() => this.onopen && this.onopen());
+      if (autoOpen) queueMicrotask(() => this.onopen && this.onopen());
     }
 
     send(raw) {

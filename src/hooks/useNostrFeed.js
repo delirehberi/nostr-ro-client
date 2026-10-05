@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
-import { queryRelays, chunk } from '../relayClient.js';
+import { queryRelays, subscribeRelays, chunk } from '../relayClient.js';
 import { acceptEvent } from '../eventValidation.js';
 
 const CATEGORY_KINDS_MAP = {
@@ -182,6 +182,26 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       isMounted = false;
     };
   }, [pubkey, relays, processNewEvents, attempt]);
+
+  // Live updates: once the initial page is in, keep a subscription open for new events.
+  useEffect(() => {
+    if (!pubkey || relays.length === 0 || isLoading) return;
+
+    let newest = 0;
+    eventMapRef.current.forEach((e) => {
+      if (e.pubkey === pubkey && e.created_at > newest) newest = e.created_at;
+    });
+
+    return subscribeRelays(
+      relays,
+      { authors: [pubkey], since: newest || Math.floor(Date.now() / 1000) },
+      {
+        onEvent: (event) => {
+          if (!eventMapRef.current.has(event.id)) processNewEvents([event]);
+        },
+      }
+    );
+  }, [pubkey, relays, isLoading, processNewEvents]);
 
   /** Re-run the initial fetch after a failure. */
   const retry = useCallback(() => setAttempt((n) => n + 1), []);

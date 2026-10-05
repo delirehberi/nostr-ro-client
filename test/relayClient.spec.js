@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { queryRelays, chunk } from '../src/relayClient.js';
+import { queryRelays, subscribeRelays, chunk } from '../src/relayClient.js';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { installMockWebSocket } from './helpers/mockWebSocket.js';
 
@@ -86,5 +86,82 @@ describe('queryRelays verification', () => {
 
     const { events } = await queryRelays(['wss://a'], { authors: [pk], kinds: [1] });
     expect(events.map((e) => e.id)).toEqual([good.id]);
+  });
+});
+
+describe('subscribeRelays', () => {
+  const live = (id, created_at) => ({ id, pubkey: 'a', kind: 1, created_at, tags: [], content: '' });
+
+  it('pushes events as they arrive, once per id across relays, and drops unrelated frames', async () => {
+    const sockets = installMockWebSocket();
+    const received = [];
+    const stop = subscribeRelays(['wss://a', 'wss://b'], { authors: ['a'], since: 100 }, { onEvent: (e) => received.push(e.id), verify: false });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    sockets.forEach((ws) => {
+      expect(ws.sent[0][2]).toEqual({ authors: ['a'], since: 100 });
+      ws.emit(['EVENT', ws.subId, live('e1', 101)]);
+      ws.emit(['EVENT', 'other-sub', live('x', 102)]);
+      ws.emit(['EOSE', ws.subId]);
+    });
+    sockets[0].emit(['EVENT', sockets[0].subId, live('e2', 103)]);
+
+    expect(received).toEqual(['e1', 'e2']);
+    stop();
+  });
+
+  it('verifies events by default', async () => {
+    const sockets = installMockWebSocket();
+    const received = [];
+    const stop = subscribeRelays(['wss://a'], { authors: ['a'], since: 1 }, { onEvent: (e) => received.push(e.id) });
+    await Promise.resolve();
+    await Promise.resolve();
+    sockets[0].emit(['EVENT', sockets[0].subId, live('unsigned', 5)]);
+    expect(received).toEqual([]);
+    stop();
+  });
+
+  it('reconnects resuming from the newest event, and resets the delay after a successful connect', async () => {
+    vi.useFakeTimers();
+    const sockets = installMockWebSocket();
+    const stop = subscribeRelays(['wss://a'], { authors: ['a'], since: 100 }, { onEvent: () => {}, verify: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(1);
+
+    sockets[0].emit(['EVENT', sockets[0].subId, live('e1', 150)]);
+    sockets[0].close();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(sockets).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1].sent[0][2].since).toBe(150);
+
+    // The second socket connected, so the next drop waits the base delay again
+    sockets[1].close();
+    await vi.advanceTimersByTimeAsync(2001);
+    expect(sockets).toHaveLength(3);
+
+    stop();
+    sockets[2].close();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(sockets).toHaveLength(3);
+  });
+
+  it('backs off exponentially while a relay stays unreachable', async () => {
+    vi.useFakeTimers();
+    const sockets = installMockWebSocket(undefined, { autoOpen: false });
+    const stop = subscribeRelays(['wss://a'], { authors: ['a'], since: 1 }, { onEvent: () => {}, verify: false });
+    await vi.advanceTimersByTimeAsync(0);
+
+    sockets[0].close();
+    await vi.advanceTimersByTimeAsync(2001);
+    expect(sockets).toHaveLength(2);
+    sockets[1].close();
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(sockets).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(sockets).toHaveLength(3);
+    stop();
   });
 });
