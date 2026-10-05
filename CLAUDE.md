@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # nostr.emre.xyz — React SPA & Nostr Client
 
 Single-user read-only Nostr client built with React 19 and Vite, deployed on Cloudflare Workers with Static Assets. Fetches and renders all kinds of Nostr events (Notes, Books, Movies, Media, Lists, Articles, Highlights) with human-friendly category tabs, sub-filtering, and client-side relay WebSocket streaming.
@@ -22,10 +26,13 @@ src/
     ProfileAvatar.jsx           — User profile, avatar, and NIP-05 badge
     RatingStars.jsx             — 5-star rating renderer
     FormattedContent.jsx        — Linkifier, media embeds (YouTube/Video/Image), Nostr mentions
+    ReactionComponent / GitEventComponent / AppHandlerComponent / SnippetComponent / QuotedEventCard / CommunityBadge — specialized cards for kinds 7, git, 31989/31990, snippets, quotes, communities
   hooks/
     useNostrFeed.js             — Multi-relay WebSocket streaming, deduplication, infinite scroll
     useProfiles.js              — Batched Kind 0 profile fetcher & caching
     useTheme.js                 — Kind 16767 / 36767 custom theme loader
+    useBookMetadata.js / useMovieMetadata.js — external metadata lookups for cards
+  relays.js                     — Cache relay URL builder and relay URL sanitizing
   kinds.js                      — Event classification taxonomy and metadata extraction
   theme.js                      — Nostr Kind 16767 & 36767 theme parser & CSS generator
   styles.css                    — CSS custom properties, responsive card styles, dark mode
@@ -36,11 +43,21 @@ test/
   components.spec.jsx           — Component unit and integration tests
   kinds.spec.js                 — Classification & metadata extraction tests
   theme.spec.js                 — Theme parser and CSS generation tests
+  relays.spec.js / community-badge.spec.jsx — Relay URL and CommunityBadge tests
   index.spec.js                 — Worker asset and cache handler tests
 index.html                      — SPA HTML entry with emre.xyz header/footer custom elements
 vite.config.js                  — Vite bundler and Vitest configuration
 wrangler.jsonc                  — Cloudflare Worker configuration with SPA static assets
 ```
+
+## Architecture
+
+- **No backend logic.** `src/index.js` is a Worker that only proxies to `env.ASSETS` (with a scheduled handler that clears optional KV `CACHE` keys). All Nostr work happens in the browser.
+- **Relays** (`src/relays.js`): the client talks to a single cache relay (`wss://cache.nostr.org.tr?relays=...`) that proxies upstream relays; `getDefaultRelays()` builds that URL. Hooks open raw `WebSocket`s and speak NIP-01 (`REQ`/`EVENT`/`EOSE`) directly — `nostr-tools` is used only for NIP-19 encoding.
+- **Data flow**: `App.jsx` hardcodes the owner pubkey and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
+- **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` in `useNostrFeed.js` maps categories to relay kind filters. Adding a kind/category usually means touching `classifyEvent`, `CATEGORIES_CONFIG`, `CATEGORY_KINDS_MAP`, and `EventCard`, plus a case in `test/kinds.spec.js`.
+- **URL state**: `App.jsx` syncs `?category=&sub=` (and a single-post view) with `history.pushState`/`popstate`; no router library.
+- `todo.md` is an unrelated, stale Haskell/Miso prompt — ignore it.
 
 ## Supported Categories & Event Kinds
 
@@ -63,8 +80,17 @@ make test              # run full test suite (vitest run)
 make test-watch        # run test suite in watch mode
 make deploy            # build and deploy to Cloudflare
 make tail              # tail live worker logs
-make clean             # clean local build/cache artifacts
+make clean             # clean local build/cache artifacts (only removes .wrangler)
 ```
+
+Run a single test file or test name (there is no linter/formatter script; `.prettierrc` and `.editorconfig` define style):
+
+```bash
+npx vitest run test/kinds.spec.js
+npx vitest run test/components.spec.jsx -t "partial test name"
+```
+
+Vitest runs under jsdom with globals enabled (config in `vitest.config.js`; `vite.config.js` has a duplicate `test` block — keep them in sync).
 
 ## Configuration (wrangler.jsonc)
 
