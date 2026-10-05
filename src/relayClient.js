@@ -120,3 +120,95 @@ export async function queryRelays(relays, filter, options = {}) {
   }
   return { events: Array.from(byId.values()), ok };
 }
+
+const RECONNECT_BASE_DELAY_MS = 2000;
+const RECONNECT_MAX_DELAY_MS = 30000;
+
+/**
+ * Keep a live subscription open on every relay.
+ *
+ * Each relay gets one WebSocket that stays open after EOSE so new events are
+ * pushed as they are published. If a socket drops it reconnects with
+ * exponential backoff, asking only for events newer than the last one seen so
+ * nothing is missed or replayed. Events are verified like `queryRelays` does
+ * and de-duplicated across relays and reconnects.
+ *
+ * @param {string[]} relays
+ * @param {object} filter - Should include `since` to avoid replaying history.
+ * @param {{onEvent: (event: object) => void, verify?: boolean, subPrefix?: string}} options
+ * @returns {() => void} Unsubscribe; closes every socket and cancels reconnects.
+ */
+export function subscribeRelays(relays, filter, { onEvent, verify = true, subPrefix = 'live' } = {}) {
+  const seen = new Set();
+  const closers = [];
+  let stopped = false;
+  let lastCreatedAt = filter.since ?? 0;
+
+  const subscribeOne = (relayUrl) => {
+    let ws;
+    let timer = null;
+    let delay = RECONNECT_BASE_DELAY_MS;
+
+    const connect = () => {
+      if (stopped) return;
+      const subId = `${subPrefix}_${Math.random().toString(36).slice(2, 8)}`;
+      const reqFilter = lastCreatedAt ? { ...filter, since: lastCreatedAt } : filter;
+
+      try {
+        ws = new WebSocket(relayUrl);
+      } catch (_) {
+        scheduleReconnect();
+        return;
+      }
+      ws.onopen = () => {
+        delay = RECONNECT_BASE_DELAY_MS;
+        try {
+          ws.send(JSON.stringify(['REQ', subId, reqFilter]));
+        } catch (_) {}
+      };
+      ws.onmessage = (msg) => {
+        try {
+          const data = JSON.parse(msg.data);
+          if (data[0] !== 'EVENT' || data[1] !== subId || !data[2]) return;
+          const event = data[2];
+          if (typeof event.id !== 'string' || seen.has(event.id)) return;
+          if (verify && !acceptEvent(event, filter)) return;
+          seen.add(event.id);
+          if (event.created_at > lastCreatedAt) lastCreatedAt = event.created_at;
+          onEvent(event);
+        } catch (_) {}
+      };
+      ws.onerror = () => {};
+      ws.onclose = scheduleReconnect;
+    };
+
+    function scheduleReconnect() {
+      if (stopped || timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        connect();
+      }, delay);
+      delay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS);
+    }
+
+    closers.push(() => {
+      clearTimeout(timer);
+      timer = null;
+      if (ws) {
+        ws.onclose = null;
+        try {
+          ws.close();
+        } catch (_) {}
+      }
+    });
+
+    connect();
+  };
+
+  relays.forEach(subscribeOne);
+
+  return () => {
+    stopped = true;
+    closers.forEach((close) => close());
+  };
+}

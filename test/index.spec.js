@@ -45,7 +45,10 @@ describe('nostr client worker & static asset handler', () => {
     expect(response.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
     const csp = response.headers.get('Content-Security-Policy-Report-Only');
     expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain('wss://cache.nostr.org.tr');
+    ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.ditto.pub', 'wss://relay.emre.xyz'].forEach((r) =>
+      expect(csp).toContain(r)
+    );
+    expect(csp).not.toContain('cache.nostr');
   });
 
   it('has no scheduled handler (the KV cache it purged is gone)', () => {

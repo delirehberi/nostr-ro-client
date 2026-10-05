@@ -32,7 +32,7 @@ src/
     useProfiles.js              — Batched Kind 0 profile fetcher & caching
     useTheme.js                 — Kind 16767 / 36767 custom theme loader
     useBookMetadata.js / useMovieMetadata.js — external metadata lookups for cards
-  relays.js                     — Cache relay URL builder and relay URL sanitizing
+  relays.js                     — Default relay list (DEFAULT_RELAYS) and relay URL sanitizing/normalizing
   kinds.js                      — Event classification taxonomy and metadata extraction
   theme.js                      — Nostr Kind 16767 & 36767 theme parser & CSS generator
   styles.css                    — CSS custom properties, responsive card styles, dark mode
@@ -46,14 +46,14 @@ test/
   relays.spec.js / community-badge.spec.jsx — Relay URL and CommunityBadge tests
   index.spec.js                 — Worker asset, cache and header tests
 index.html                      — SPA HTML entry with emre.xyz header/footer custom elements
-vite.config.js                  — Vite bundler and Vitest configuration
+vite.config.js                  — Vite bundler configuration (Vitest config lives in vitest.config.js)
 wrangler.jsonc                  — Cloudflare Worker configuration with SPA static assets
 ```
 
 ## Architecture
 
 - **No backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is report-only). All Nostr work happens in the browser.
-- **Relays** (`src/relays.js`): the client talks to a single cache relay (`wss://cache.nostr.org.tr?relays=...`) that proxies upstream relays; `getDefaultRelays()` builds that URL. Hooks open raw `WebSocket`s and speak NIP-01 (`REQ`/`EVENT`/`EOSE`) directly — `nostr-tools` is used only for NIP-19 encoding.
+- **Relays** (`src/relays.js`): the client queries relay.damus.io, relay.primal.net, relay.ditto.pub and relay.emre.xyz directly (`DEFAULT_RELAYS`; results are merged and de-duplicated). The Worker's CSP `connect-src` is built from the same list. `src/relayClient.js` speaks NIP-01 over raw `WebSocket`s: `queryRelays` (one-shot REQ until EOSE; chunk ids/authors to 50) and `subscribeRelays` (live subscription with backoff reconnect, used by `useNostrFeed` for new posts). Every event is verified by `eventValidation.js` (signature + must match the filter). `nostr-tools` provides verification and NIP-19.
 - **Data flow**: `App.jsx` hardcodes the owner pubkey and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
 - **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` in `useNostrFeed.js` maps categories to relay kind filters. Adding a kind/category usually means touching `classifyEvent`, `CATEGORIES_CONFIG`, `CATEGORY_KINDS_MAP`, and `EventCard`, plus a case in `test/kinds.spec.js`.
 - **URL state**: `App.jsx` syncs `?kind=&sub=` (and a single-post view) with `history.pushState`/`popstate`; no router library.
@@ -76,14 +76,16 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 make help              # list all available make commands
 make dev               # local dev server (vite)
 make build             # build production bundle (vite build)
+make lint              # eslint (also runs in CI)
+make format            # prettier --write (reformats files; style is not enforced in CI)
 make test              # run full test suite (vitest run)
 make test-watch        # run test suite in watch mode
 make deploy            # build and deploy to Cloudflare
 make tail              # tail live worker logs
-make clean             # clean local build/cache artifacts (only removes .wrangler)
+make clean             # clean local build/cache artifacts (removes .wrangler and dist)
 ```
 
-Run a single test file or test name (there is no linter/formatter script; `.prettierrc` and `.editorconfig` define style):
+Run a single test file or test name (code style per `.prettierrc`/`.editorconfig`: 2 spaces, single quotes):
 
 ```bash
 npx vitest run test/kinds.spec.js

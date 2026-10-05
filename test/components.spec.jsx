@@ -9,11 +9,10 @@ import { MediaComponent } from '../src/components/MediaComponent.jsx';
 import { ListComponent } from '../src/components/ListComponent.jsx';
 import { HighlightComponent } from '../src/components/HighlightComponent.jsx';
 import { GenericComponent } from '../src/components/GenericComponent.jsx';
-import { GitEventComponent } from '../src/components/GitEventComponent.jsx';
+import { GitEventComponent, parsePatchStats } from '../src/components/GitEventComponent.jsx';
 import { AppHandlerComponent } from '../src/components/AppHandlerComponent.jsx';
 import { SnippetComponent } from '../src/components/SnippetComponent.jsx';
 import { ReactionComponent } from '../src/components/ReactionComponent.jsx';
-import { QuotedEventCard } from '../src/components/QuotedEventCard.jsx';
 import { EventCard } from '../src/components/EventCard.jsx';
 import { FilterBar } from '../src/components/FilterBar.jsx';
 import { RatingStars } from '../src/components/RatingStars.jsx';
@@ -621,6 +620,64 @@ describe('React Component Suite', () => {
       expect(screen.getByText('ditto')).toBeDefined();
       expect(screen.getByText('98ff1e0')).toBeDefined();
       expect(container.querySelector('.btn-gitworkshop')).toBeDefined();
+    });
+
+    describe('patches (kind 1617)', () => {
+      const patch = [
+        'From 1111111 Mon Sep 17 00:00:00 2001',
+        'Subject: [PATCH] fix thing',
+        '---',
+        ' a.js | 3 ++-',
+        'diff --git a/a.js b/a.js',
+        '--- a/a.js',
+        '+++ b/a.js',
+        '@@ -1,2 +1,4 @@',
+        '-old',
+        '+new',
+        '+newer',
+        '+newest',
+        'diff --git a/b.js b/b.js',
+        '--- a/b.js',
+        '+++ b/b.js',
+        '-gone',
+      ].join('\n');
+
+      it('parsePatchStats counts files, additions and deletions without headers', () => {
+        expect(parsePatchStats(patch)).toEqual({ files: 2, additions: 3, deletions: 2 });
+        expect(parsePatchStats('')).toEqual({ files: 0, additions: 0, deletions: 0 });
+        expect(parsePatchStats(undefined)).toEqual({ files: 0, additions: 0, deletions: 0 });
+      });
+
+      it('renders a patch badge with series role and diff size', () => {
+        const event = {
+          id: 'patch1',
+          pubkey: mockPubkey,
+          kind: 1617,
+          content: patch,
+          created_at: 1787317300,
+          tags: [['a', `30617:${mockPubkey}:ditto`], ['t', 'root']],
+        };
+        const { container } = render(<GitEventComponent event={event} profileMap={profileMap} />);
+        const row = container.querySelector('.git-patch-row');
+        expect(row).not.toBeNull();
+        expect(row.textContent).toContain('Root patch');
+        expect(row.textContent).toContain('2 files');
+        expect(row.textContent).toContain('+3');
+        expect(row.textContent).toContain('−2');
+        expect(container.querySelector('.btn-gitworkshop').textContent).toContain('View Patch on GitWorkshop');
+      });
+
+      it('marks revisions and omits the row for non-patch events', () => {
+        const revision = { id: 'patch2', pubkey: mockPubkey, kind: 1617, content: '', created_at: 1, tags: [['t', 'root-revision']] };
+        const { container, unmount } = render(<GitEventComponent event={revision} profileMap={profileMap} />);
+        expect(container.querySelector('.git-patch-row').textContent).toContain('Revision');
+        expect(container.querySelector('.git-patch-row').textContent).not.toContain('files');
+        unmount();
+
+        const pr = { id: 'pr1', pubkey: mockPubkey, kind: 1618, content: 'x', created_at: 1, tags: [] };
+        const { container: prContainer } = render(<GitEventComponent event={pr} profileMap={profileMap} />);
+        expect(prContainer.querySelector('.git-patch-row')).toBeNull();
+      });
     });
 
     it('renders NIP-34 repository announcement with clone button', () => {

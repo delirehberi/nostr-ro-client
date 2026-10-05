@@ -96,6 +96,21 @@ describe('useNostrFeed', () => {
     expect(page.until).toBe(479);
   });
 
+  it('adds events published after load via the live subscription', async () => {
+    const sockets = installMockWebSocket(fakeRelay([ev('old', 100)], []));
+    const { result } = renderHook(() => useNostrFeed(OWNER, relays));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The live socket is the one whose REQ carries `since`
+    await waitFor(() => expect(sockets.some((ws) => ws.sent[0]?.[2]?.since !== undefined && !ws.closed)).toBe(true));
+    const liveSocket = sockets.find((ws) => ws.sent[0][2].since !== undefined && !ws.closed);
+    expect(liveSocket.sent[0][2].since).toBe(100);
+
+    act(() => liveSocket.emit(['EVENT', liveSocket.subId, ev('fresh', 200)]));
+    await waitFor(() => expect(result.current.events.map((e) => e.id)).toEqual(['fresh', 'old']));
+    expect(result.current.categoryCounts.all).toBe(2);
+  });
+
   it('only marks a query exhausted after a relay-confirmed empty page', async () => {
     const store = [ev('n1', 1000)];
     installMockWebSocket(fakeRelay(store, []));

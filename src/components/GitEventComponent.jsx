@@ -4,6 +4,23 @@ import { ProfileAvatar } from './ProfileAvatar.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
 import { QuotedEventCard } from './QuotedEventCard.jsx';
 
+/**
+ * Summarize a git patch (`git format-patch` output) carried in a kind 1617 event.
+ *
+ * @param {string} content
+ * @returns {{files: number, additions: number, deletions: number}}
+ */
+export function parsePatchStats(content) {
+  const stats = { files: 0, additions: 0, deletions: 0 };
+  if (typeof content !== 'string') return stats;
+  for (const line of content.split('\n')) {
+    if (line.startsWith('diff --git ')) stats.files += 1;
+    else if (line.startsWith('+') && !line.startsWith('+++')) stats.additions += 1;
+    else if (line.startsWith('-') && !line.startsWith('---')) stats.deletions += 1;
+  }
+  return stats;
+}
+
 export function GitEventComponent({ event, profileMap, eventMap }) {
   const [copiedClone, setCopiedClone] = useState(false);
   const meta = extractEventMetadata(event);
@@ -23,6 +40,10 @@ export function GitEventComponent({ event, profileMap, eventMap }) {
   const isPullRequest = event.kind === 1618;
   const isIssue = event.kind === 1621;
   const isPatch = event.kind === 1617;
+  const patchStats = isPatch ? parsePatchStats(event.content) : null;
+  const patchTags = isPatch ? (event.tags || []).filter((t) => t[0] === 't').map((t) => t[1]) : [];
+  const isRootPatch = patchTags.includes('root');
+  const isRevisionPatch = patchTags.includes('root-revision');
 
   return (
     <>
@@ -59,6 +80,25 @@ export function GitEventComponent({ event, profileMap, eventMap }) {
                 <path d="M18 9a9 9 0 0 1-9 9" />
               </svg>
               {gitCtx.branch}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Patch summary: role in the series and diff size */}
+      {isPatch && (
+        <div className="git-patch-row">
+          {isRootPatch && <span className="git-patch-pill git-patch-root">Root patch</span>}
+          {isRevisionPatch && <span className="git-patch-pill git-patch-revision">Revision</span>}
+          {patchStats.files > 0 && (
+            <span className="git-patch-pill">
+              {patchStats.files} {patchStats.files === 1 ? 'file' : 'files'}
+            </span>
+          )}
+          {(patchStats.additions > 0 || patchStats.deletions > 0) && (
+            <span className="git-patch-pill">
+              <span className="git-patch-add">+{patchStats.additions}</span>{' '}
+              <span className="git-patch-del">−{patchStats.deletions}</span>
             </span>
           )}
         </div>
@@ -151,7 +191,7 @@ export function GitEventComponent({ event, profileMap, eventMap }) {
               <path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/>
             </svg>
             <span>
-              {isPullRequest ? 'View PR on GitWorkshop ↗' : isIssue ? 'View Issue on GitWorkshop ↗' : isRepoAnnouncement ? 'Open Repo in GitWorkshop ↗' : 'Open in GitWorkshop ↗'}
+              {isPullRequest ? 'View PR on GitWorkshop ↗' : isIssue ? 'View Issue on GitWorkshop ↗' : isPatch ? 'View Patch on GitWorkshop ↗' : isRepoAnnouncement ? 'Open Repo in GitWorkshop ↗' : 'Open in GitWorkshop ↗'}
             </span>
           </a>
         </div>
