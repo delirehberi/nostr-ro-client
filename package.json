@@ -13,13 +13,12 @@
 		"test:watch": "vitest"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.19",
 		"@testing-library/jest-dom": "^6.6.3",
 		"@testing-library/react": "^16.2.0",
 		"@vitejs/plugin-react": "^4.3.4",
 		"jsdom": "^26.0.0",
-		"vitest": "~3.0.7",
 		"vite": "^6.1.1",
+		"vitest": "~3.0.7",
 		"wrangler": "^4.19.1"
 	},
 	"dependencies": {

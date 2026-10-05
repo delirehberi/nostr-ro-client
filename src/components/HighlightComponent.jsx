@@ -1,5 +1,6 @@
 import React from 'react';
 import { extractEventMetadata } from '../kinds.js';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function HighlightComponent({ event }) {
   const meta = extractEventMetadata(event);
@@ -13,7 +14,7 @@ export function HighlightComponent({ event }) {
         <span>{new Date(event.created_at * 1000).toLocaleDateString()}</span>
         {sourceUrl && (
           <a
-            href={sourceUrl.value}
+            href={safeHttpUrl(sourceUrl.value)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-action"

@@ -1761,3 +1761,34 @@ video {
     padding: 0.9em 1em 0.2em 1em;
   }
 }
+
+.relay-error,
+.event-card-error {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--meta);
+}
+
+.relay-error-retry {
+  margin-left: 0.5em;
+  padding: 0.2em 0.8em;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--link);
+  cursor: pointer;
+  font: inherit;
+}
+
+button.video-container {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+button.video-container:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}

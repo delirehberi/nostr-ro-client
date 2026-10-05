@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
+import { queryRelays, chunk } from '../relayClient.js';
+import { acceptEvent } from '../eventValidation.js';
 
 const CATEGORY_KINDS_MAP = {
   books: [30040, 30041, 30001, 30003, 1985],
@@ -12,83 +14,40 @@ const CATEGORY_KINDS_MAP = {
   highlights: [9802],
 };
 
+const MAX_IDS_PER_REQUEST = 50;
+
 export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   const [events, setEvents] = useState([]);
   const [eventMap, setEventMap] = useState(() => new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const [exhausted, setExhausted] = useState(() => new Set());
 
   const eventMapRef = useRef(new Map());
   const fetchedParentIdsRef = useRef(new Set());
-  const oldestTimestampRef = useRef(Infinity);
+  // Oldest created_at seen per paging query ('all' or a category), used as the `until` cursor.
+  const cursorsRef = useRef(new Map());
 
   const fetchParents = useCallback(
     async (parentIds) => {
-      const needed = parentIds.filter(
+      const needed = Array.from(new Set(parentIds)).filter(
         (id) => !eventMapRef.current.has(id) && !fetchedParentIdsRef.current.has(id)
       );
       if (needed.length === 0 || relays.length === 0) return;
 
       needed.forEach((id) => fetchedParentIdsRef.current.add(id));
 
-      const filter = {
-        ids: needed.slice(0, 50),
-      };
-
-      const parentEvents = [];
-      const fetchPromises = relays.map((relayUrl) => {
-        return new Promise((resolve) => {
-          let ws;
-          const subId = 'par_' + Math.random().toString(36).slice(2, 6);
-          const timer = setTimeout(() => {
-            if (ws) {
-              try {
-                ws.close();
-              } catch (_) {}
-            }
-            resolve();
-          }, 3000);
-
-          try {
-            ws = new WebSocket(relayUrl);
-            ws.onopen = () => {
-              try {
-                ws.send(JSON.stringify(['REQ', subId, filter]));
-              } catch (_) {
-                resolve();
-              }
-            };
-            ws.onmessage = (msg) => {
-              try {
-                const data = JSON.parse(msg.data);
-                if (data[0] === 'EVENT' && data[2]) {
-                  parentEvents.push(data[2]);
-                } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                  clearTimeout(timer);
-                  try {
-                    ws.close();
-                  } catch (_) {}
-                  resolve();
-                }
-              } catch (_) {}
-            };
-            ws.onerror = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-            ws.onclose = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-          } catch (_) {
-            clearTimeout(timer);
-            resolve();
-          }
-        });
-      });
-
-      await Promise.all(fetchPromises);
+      const results = await Promise.all(
+        chunk(needed, MAX_IDS_PER_REQUEST).map(async (ids) => {
+          const { events, ok } = await queryRelays(relays, { ids }, { timeout: 3000, subPrefix: 'par' });
+          // Let ids from a failed request be retried by a later call.
+          if (!ok) ids.forEach((id) => fetchedParentIdsRef.current.delete(id));
+          return events;
+        })
+      );
+      const parentEvents = results.flat();
 
       if (parentEvents.length > 0) {
         const authorPubkeys = [];
@@ -110,15 +69,18 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   );
 
   const processNewEvents = useCallback(
-    (newEventsList) => {
+    (newEventsList, cursorKey = null) => {
       const pubkeysToRequest = [];
       const parentIdsToRequest = [];
 
       newEventsList.forEach((e) => {
         if (!eventMapRef.current.has(e.id)) {
           eventMapRef.current.set(e.id, e);
-          if (e.created_at < oldestTimestampRef.current) {
-            oldestTimestampRef.current = e.created_at;
+        }
+        if (cursorKey && e.pubkey === pubkey) {
+          const current = cursorsRef.current.get(cursorKey);
+          if (current === undefined || e.created_at < current) {
+            cursorsRef.current.set(cursorKey, e.created_at);
           }
         }
         if (e.pubkey) pubkeysToRequest.push(e.pubkey);
@@ -127,7 +89,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         if ((e.kind === 6 || e.kind === 16) && e.content && e.content.trim().startsWith('{')) {
           try {
             const innerEvent = JSON.parse(e.content);
-            if (innerEvent && innerEvent.id && innerEvent.pubkey) {
+            if (acceptEvent(innerEvent)) {
               if (!eventMapRef.current.has(innerEvent.id)) {
                 eventMapRef.current.set(innerEvent.id, innerEvent);
               }
@@ -174,9 +136,11 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         }
       });
 
-      const sorted = Array.from(eventMapRef.current.values()).sort(
-        (a, b) => b.created_at - a.created_at
-      );
+      // The feed only lists the owner's events; everything else (reply parents,
+      // quotes, reposted notes) stays in eventMap purely for lookups.
+      const sorted = Array.from(eventMapRef.current.values())
+        .filter((e) => e.pubkey === pubkey)
+        .sort((a, b) => b.created_at - a.created_at);
 
       setEvents(sorted);
       setEventMap(new Map(eventMapRef.current));
@@ -189,7 +153,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         fetchParents(parentIdsToRequest);
       }
     },
-    [onRequestProfiles, fetchParents]
+    [pubkey, onRequestProfiles, fetchParents]
   );
 
   // Initial Fetch
@@ -198,158 +162,61 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
     let isMounted = true;
     setIsLoading(true);
+    setError(null);
 
     const filter = {
       authors: [pubkey],
       limit: 100,
     };
 
-    const incomingEvents = new Map();
-    const fetchPromises = relays.map((relayUrl) => {
-      return new Promise((resolve) => {
-        let ws;
-        const subId = 'init_' + Math.random().toString(36).slice(2, 6);
-        const timer = setTimeout(() => {
-          if (ws) {
-            try {
-              ws.close();
-            } catch (_) {}
-          }
-          resolve();
-        }, 3500);
-
-        try {
-          ws = new WebSocket(relayUrl);
-          ws.onopen = () => {
-            try {
-              ws.send(JSON.stringify(['REQ', subId, filter]));
-            } catch (_) {
-              resolve();
-            }
-          };
-          ws.onmessage = (msg) => {
-            try {
-              const data = JSON.parse(msg.data);
-              if (data[0] === 'EVENT' && data[2]) {
-                incomingEvents.set(data[2].id, data[2]);
-              } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                clearTimeout(timer);
-                try {
-                  ws.close();
-                } catch (_) {}
-                resolve();
-              }
-            } catch (_) {}
-          };
-          ws.onerror = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          ws.onclose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        } catch (_) {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-    });
-
-    Promise.all(fetchPromises).then(() => {
+    queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming, ok }) => {
       if (!isMounted) return;
-      processNewEvents(Array.from(incomingEvents.values()));
+      processNewEvents(incoming, 'all');
+      if (!ok && incoming.length === 0) {
+        setError('Could not reach the Nostr relays.');
+      }
       setIsLoading(false);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [pubkey, relays, processNewEvents]);
+  }, [pubkey, relays, processNewEvents, attempt]);
 
-  // Load More (Infinite Scroll)
-  const loadOlderEvents = useCallback(async () => {
-    if (
-      isLoadingMore ||
-      !hasMore ||
-      oldestTimestampRef.current === Infinity ||
-      !pubkey ||
-      relays.length === 0
-    ) {
-      return;
-    }
+  /** Re-run the initial fetch after a failure. */
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-    setIsLoadingMore(true);
+  // Load More (Infinite Scroll). Pages the category's own query when it has one,
+  // otherwise the unfiltered one.
+  const loadOlderEvents = useCallback(
+    async (category = 'all') => {
+      const key = cursorsRef.current.has(category) ? category : 'all';
+      const cursor = cursorsRef.current.get(key);
+      if (isLoadingMore || exhausted.has(key) || cursor === undefined || !pubkey || relays.length === 0) {
+        return;
+      }
 
-    const filter = {
-      authors: [pubkey],
-      until: oldestTimestampRef.current - 1,
-      limit: 50,
-    };
+      setIsLoadingMore(true);
 
-    const incomingEvents = new Map();
-    const fetchPromises = relays.map((relayUrl) => {
-      return new Promise((resolve) => {
-        let ws;
-        const subId = 'more_' + Math.random().toString(36).slice(2, 6);
-        const timer = setTimeout(() => {
-          if (ws) {
-            try {
-              ws.close();
-            } catch (_) {}
-          }
-          resolve();
-        }, 3500);
+      const filter = { authors: [pubkey], until: cursor - 1, limit: 50 };
+      if (key !== 'all') filter.kinds = CATEGORY_KINDS_MAP[key];
 
-        try {
-          ws = new WebSocket(relayUrl);
-          ws.onopen = () => {
-            try {
-              ws.send(JSON.stringify(['REQ', subId, filter]));
-            } catch (_) {
-              resolve();
-            }
-          };
-          ws.onmessage = (msg) => {
-            try {
-              const data = JSON.parse(msg.data);
-              if (data[0] === 'EVENT' && data[2]) {
-                incomingEvents.set(data[2].id, data[2]);
-              } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                clearTimeout(timer);
-                try {
-                  ws.close();
-                } catch (_) {}
-                resolve();
-              }
-            } catch (_) {}
-          };
-          ws.onerror = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          ws.onclose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        } catch (_) {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-    });
+      const { events: newItems, ok } = await queryRelays(relays, filter, { subPrefix: 'more' });
 
-    await Promise.all(fetchPromises);
+      if (newItems.length > 0) {
+        processNewEvents(newItems, key);
+        setError(null);
+      } else if (!ok) {
+        setError('Could not load older events from the Nostr relays.');
+      } else {
+        // Only a relay-confirmed empty page means we reached the end.
+        setExhausted((prev) => new Set(prev).add(key));
+      }
 
-    const newItems = Array.from(incomingEvents.values());
-    if (newItems.length === 0) {
-      setHasMore(false);
-    } else {
-      processNewEvents(newItems);
-    }
-
-    setIsLoadingMore(false);
-  }, [isLoadingMore, hasMore, pubkey, relays, processNewEvents]);
+      setIsLoadingMore(false);
+    },
+    [isLoadingMore, exhausted, pubkey, relays, processNewEvents]
+  );
 
   // Fetch Category Specifically
   const fetchCategoryEvents = useCallback(
@@ -363,64 +230,21 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         limit: 100,
       };
 
-      const incomingEvents = new Map();
-      const fetchPromises = relays.map((relayUrl) => {
-        return new Promise((resolve) => {
-          let ws;
-          const subId = 'cat_' + category + '_' + Math.random().toString(36).slice(2, 6);
-          const timer = setTimeout(() => {
-            if (ws) {
-              try {
-                ws.close();
-              } catch (_) {}
-            }
-            resolve();
-          }, 3500);
-
-          try {
-            ws = new WebSocket(relayUrl);
-            ws.onopen = () => {
-              try {
-                ws.send(JSON.stringify(['REQ', subId, filter]));
-              } catch (_) {
-                resolve();
-              }
-            };
-            ws.onmessage = (msg) => {
-              try {
-                const data = JSON.parse(msg.data);
-                if (data[0] === 'EVENT' && data[2]) {
-                  incomingEvents.set(data[2].id, data[2]);
-                } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                  clearTimeout(timer);
-                  try {
-                    ws.close();
-                  } catch (_) {}
-                  resolve();
-                }
-              } catch (_) {}
-            };
-            ws.onerror = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-            ws.onclose = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-          } catch (_) {
-            clearTimeout(timer);
-            resolve();
-          }
-        });
-      });
-
-      await Promise.all(fetchPromises);
-      if (incomingEvents.size > 0) {
-        processNewEvents(Array.from(incomingEvents.values()));
+      const { events: incoming } = await queryRelays(relays, filter, { subPrefix: 'cat' });
+      if (incoming.length > 0) {
+        processNewEvents(incoming, category);
       }
     },
     [pubkey, relays, processNewEvents]
+  );
+
+  /** Fetch a single event by id (e.g. a directly opened post) into eventMap. */
+  const fetchEvent = useCallback((id) => fetchParents([id]), [fetchParents]);
+
+  /** Whether the paging query used for `category` can still return older events. */
+  const hasMoreFor = useCallback(
+    (category = 'all') => !exhausted.has(cursorsRef.current.has(category) ? category : 'all'),
+    [exhausted]
   );
 
   // Calculate live category counts
@@ -438,10 +262,13 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     eventMap,
     isLoading,
     isLoadingMore,
-    hasMore,
+    error,
+    retry,
+    hasMoreFor,
     categoryCounts,
     loadOlderEvents,
     fetchCategoryEvents,
+    fetchEvent,
   };
 }
 

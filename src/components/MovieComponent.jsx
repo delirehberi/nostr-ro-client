@@ -3,11 +3,12 @@ import { extractEventMetadata } from '../kinds.js';
 import { RatingStars } from './RatingStars.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
 import { useMovieMetadata } from '../hooks/useMovieMetadata.js';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function MovieItemCard({ item }) {
   const metadata = useMovieMetadata(item.value || item.imdbId, item.title, item.posterUrl);
   const displayTitle = metadata.title || item.title || (item.value ? `Movie: ${item.value}` : 'Movie');
-  const posterImg = metadata.poster || item.posterUrl;
+  const posterImg = safeHttpUrl(metadata.poster) || safeHttpUrl(item.posterUrl);
 
   return (
     <div className="movie-item-card">
@@ -86,7 +87,7 @@ export function MovieComponent({ event, profileMap }) {
     });
 
   const isMultiMovieList = movieItems.length > 1;
-  const posterImage = meta.image || (meta.imdb ? `https://images.metahub.space/poster/medium/${meta.imdb}/img.jpg` : null);
+  const posterImage = safeHttpUrl(meta.image) || (meta.imdb ? `https://images.metahub.space/poster/medium/${meta.imdb}/img.jpg` : null);
 
   return (
     <>
@@ -163,7 +164,7 @@ export function MovieComponent({ event, profileMap }) {
         )}
         {meta.externalUrl && !meta.imdb && !meta.tmdb && (
           <a
-            href={meta.externalUrl}
+            href={safeHttpUrl(meta.externalUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-action"

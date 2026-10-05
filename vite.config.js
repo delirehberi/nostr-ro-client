@@ -8,8 +8,4 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
   },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-  },
 });

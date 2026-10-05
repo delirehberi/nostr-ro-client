@@ -1,6 +1,7 @@
 import React from 'react';
 import { extractEventMetadata, getKindLabel } from '../kinds.js';
 import { ProfileAvatar } from './ProfileAvatar.jsx';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function AppHandlerComponent({ event, profileMap }) {
   const meta = extractEventMetadata(event);
@@ -16,10 +17,10 @@ export function AppHandlerComponent({ event, profileMap }) {
       </div>
 
       <div className="app-card-body">
-        {appCtx.picture && (
+        {safeHttpUrl(appCtx.picture) && (
           <div className="app-logo-wrap">
             <img
-              src={appCtx.picture}
+              src={safeHttpUrl(appCtx.picture)}
               alt={appCtx.name}
               className="app-logo-img"
               loading="lazy"
@@ -50,9 +51,9 @@ export function AppHandlerComponent({ event, profileMap }) {
 
       {/* Action Buttons: Website & NostrHub */}
       <div className="app-cta-row">
-        {appCtx.website && (
+        {safeHttpUrl(appCtx.website) && (
           <a
-            href={appCtx.website}
+            href={safeHttpUrl(appCtx.website)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-app-primary"
