@@ -101,7 +101,9 @@ function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, su
  * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string, verify?: boolean, accept?: (event: object) => boolean}} [options]
  *   By default every event must match the filter's authors/kinds/ids and carry a valid
  *   signature (see `acceptEvent`); pass `verify: false` to skip that. `accept` is an extra predicate.
- * @returns {Promise<{events: object[], ok: boolean}>} `ok` is true when at least one relay answered with EOSE.
+ * @returns {Promise<{events: object[], ok: boolean, relays: {url: string, ok: boolean, count: number, oldest: number|null}[]}>}
+ *   `ok` is true when at least one relay answered with EOSE. `relays` reports, per relay, how many
+ *   accepted events it sent and the oldest `created_at` among them (used for paging, see `nextPageCursor`).
  */
 export async function queryRelays(relays, filter, options = {}) {
   const { accept, verify = true, ...rest } = options;
@@ -109,16 +111,47 @@ export async function queryRelays(relays, filter, options = {}) {
 
   const byId = new Map();
   let ok = false;
-  for (const result of results) {
+  const stats = results.map((result, i) => {
     if (result.ok) ok = true;
+    let count = 0;
+    let oldest = null;
     for (const event of result.events) {
-      if (!event || typeof event.id !== 'string' || byId.has(event.id)) continue;
-      if (verify && !acceptEvent(event, filter)) continue;
-      if (accept && !accept(event)) continue;
-      byId.set(event.id, event);
+      if (!event || typeof event.id !== 'string') continue;
+      if (!byId.has(event.id)) {
+        if (verify && !acceptEvent(event, filter)) continue;
+        if (accept && !accept(event)) continue;
+        byId.set(event.id, event);
+      }
+      count++;
+      if (typeof event.created_at === 'number' && (oldest === null || event.created_at < oldest)) {
+        oldest = event.created_at;
+      }
     }
-  }
-  return { events: Array.from(byId.values()), ok };
+    return { url: relays[i], ok: result.ok, count, oldest };
+  });
+  return { events: Array.from(byId.values()), ok, relays: stats };
+}
+
+/**
+ * The `until` cursor for the next page after a `queryRelays` call with `limit`.
+ *
+ * Each relay answers `limit` on its own, so their pages can cover very
+ * different time ranges. Only relays that returned a full page may have older
+ * events, and everything newer than the *newest* of their oldest events has
+ * been seen from all of them, so that is where the next page starts. When no
+ * relay returned a full page, every relay sent all it had, and the oldest event
+ * overall is used (the next page then confirms the end).
+ *
+ * @param {{count: number, oldest: number|null}[]} relayStats
+ * @param {number} limit
+ * @returns {number|undefined} undefined when no relay returned anything.
+ */
+export function nextPageCursor(relayStats, limit) {
+  const withEvents = (relayStats || []).filter((r) => r.count > 0 && r.oldest !== null);
+  if (withEvents.length === 0) return undefined;
+  const full = withEvents.filter((r) => r.count >= limit);
+  if (full.length > 0) return Math.max(...full.map((r) => r.oldest));
+  return Math.min(...withEvents.map((r) => r.oldest));
 }
 
 const RECONNECT_BASE_DELAY_MS = 2000;

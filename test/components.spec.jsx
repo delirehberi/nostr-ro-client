@@ -346,6 +346,68 @@ describe('React Component Suite', () => {
       expect(screen.getByText('🖼️ Photo')).toBeDefined();
       expect(container.querySelector('img.post-image')).toBeDefined();
     });
+
+    it('renders kind 20 imeta images with their alt text above the caption', () => {
+      const event = {
+        id: 'photo_2',
+        kind: 20,
+        pubkey: mockPubkey,
+        content: 'Evening walk',
+        created_at: 1787317300,
+        tags: [
+          ['imeta', 'url https://img.example/walk.jpg', 'm image/jpeg', 'alt Trees by the river'],
+          ['imeta', 'url javascript:alert(1)', 'm image/jpeg'],
+        ]
+      };
+
+      const { container } = render(<MediaComponent event={event} profileMap={profileMap} />);
+      const imgs = container.querySelectorAll('img.post-image');
+      expect(imgs).toHaveLength(1);
+      expect(imgs[0].getAttribute('src')).toBe('https://img.example/walk.jpg');
+      expect(imgs[0].getAttribute('alt')).toBe('Trees by the river');
+      expect(screen.getByText('Evening walk')).toBeDefined();
+    });
+
+    it('does not embed an imeta url twice when it is also in the content', () => {
+      const event = {
+        id: 'photo_3',
+        kind: 20,
+        pubkey: mockPubkey,
+        content: 'https://img.example/a.jpg',
+        created_at: 1787317300,
+        tags: [['imeta', 'url https://img.example/a.jpg', 'm image/jpeg']]
+      };
+      const { container } = render(<MediaComponent event={event} profileMap={profileMap} />);
+      expect(container.querySelectorAll('img.post-image')).toHaveLength(1);
+    });
+
+    it('renders kind 1063 file metadata from its url tag', () => {
+      const video = {
+        id: 'file_1',
+        kind: 1063,
+        pubkey: mockPubkey,
+        content: 'Conference talk',
+        created_at: 1787317300,
+        tags: [['url', 'https://files.example/talk'], ['m', 'video/mp4']]
+      };
+      render(<MediaComponent event={video} profileMap={profileMap} />);
+      expect(screen.getByText('📹 Video')).toBeDefined();
+      fireEvent.click(screen.getByRole('button', { name: /play video/i }));
+      expect(document.querySelector('video').getAttribute('src')).toBe('https://files.example/talk');
+    });
+
+    it('uses the kind 1063 description as image alt text', () => {
+      const image = {
+        id: 'file_2',
+        kind: 1063,
+        pubkey: mockPubkey,
+        content: 'Whiteboard sketch',
+        created_at: 1787317300,
+        tags: [['url', 'https://files.example/sketch.png'], ['m', 'image/png']]
+      };
+      const { container } = render(<MediaComponent event={image} profileMap={profileMap} />);
+      expect(container.querySelector('img.post-image').getAttribute('alt')).toBe('Whiteboard sketch');
+    });
   });
 
   describe('ListComponent', () => {

@@ -19,7 +19,7 @@ function describeMedia(url, fallback) {
   }
 }
 
-function VideoPlayer({ url }) {
+export function VideoPlayer({ url }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   if (isPlaying) {
