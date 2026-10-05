@@ -3,11 +3,12 @@ import { extractEventMetadata } from '../kinds.js';
 import { RatingStars } from './RatingStars.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
 import { useBookMetadata } from '../hooks/useBookMetadata.js';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function BookItemCard({ item }) {
   const metadata = useBookMetadata(item.isbn || item.value, item.title);
   const displayTitle = metadata.title || item.title || (item.isbn ? `ISBN: ${item.isbn}` : 'Book');
-  const coverImg = metadata.cover || item.coverUrl;
+  const coverImg = safeHttpUrl(metadata.cover) || safeHttpUrl(item.coverUrl);
 
   return (
     <div className="book-item-card">
@@ -78,7 +79,7 @@ export function BookComponent({ event, profileMap }) {
     });
 
   const isMultiBookList = isbnItems.length > 1;
-  const coverImage = meta.image || (meta.isbn ? `https://covers.openlibrary.org/b/isbn/${meta.isbn}-M.jpg` : null);
+  const coverImage = safeHttpUrl(meta.image) || (meta.isbn ? `https://covers.openlibrary.org/b/isbn/${meta.isbn}-M.jpg` : null);
 
   return (
     <>

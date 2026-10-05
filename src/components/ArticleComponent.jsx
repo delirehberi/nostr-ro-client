@@ -1,6 +1,7 @@
 import React from 'react';
 import { extractEventMetadata, OWNER_PUBKEY } from '../kinds.js';
 import { ProfileAvatar } from './ProfileAvatar.jsx';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function ArticleComponent({ event, profileMap }) {
   const meta = extractEventMetadata(event, 'https://blog.emre.xyz');
@@ -25,9 +26,9 @@ export function ArticleComponent({ event, profileMap }) {
         </div>
       )}
 
-      {meta.image && (
+      {safeHttpUrl(meta.image) && (
         <div className="article-banner">
-          <img src={meta.image} alt={meta.title || 'Article Header'} loading="lazy" />
+          <img src={safeHttpUrl(meta.image)} alt={meta.title || 'Article Header'} loading="lazy" />
         </div>
       )}
 
@@ -37,7 +38,7 @@ export function ArticleComponent({ event, profileMap }) {
       <div className="article-cta-box">
         {isOwner ? (
           <a
-            href={meta.externalUrl}
+            href={safeHttpUrl(meta.externalUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-blog-read"
@@ -46,7 +47,7 @@ export function ArticleComponent({ event, profileMap }) {
           </a>
         ) : (
           <a
-            href={meta.externalUrl}
+            href={safeHttpUrl(meta.externalUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-action"

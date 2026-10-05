@@ -3,6 +3,7 @@ import { extractEventMetadata, getKindLabel } from '../kinds.js';
 import { ProfileAvatar, shortifyNpub } from './ProfileAvatar.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
 import { RatingStars } from './RatingStars.jsx';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function GenericComponent({ event, profileMap }) {
   const meta = extractEventMetadata(event);
@@ -77,7 +78,7 @@ export function GenericComponent({ event, profileMap }) {
             <span className="review-target-label">Reviewing / Labeled:</span>
             {target.type === 'github' && (
               <a
-                href={target.url}
+                href={safeHttpUrl(target.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="review-target-link"
@@ -91,7 +92,7 @@ export function GenericComponent({ event, profileMap }) {
             )}
             {target.type === 'url' && (
               <a
-                href={target.url}
+                href={safeHttpUrl(target.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="review-target-link"
@@ -205,7 +206,7 @@ export function GenericComponent({ event, profileMap }) {
               return (
                 <div key={idx} className="list-item-row">
                   <a
-                    href={t.value}
+                    href={safeHttpUrl(t.value)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="list-item-link"
@@ -221,7 +222,7 @@ export function GenericComponent({ event, profileMap }) {
               return (
                 <div key={idx} className="list-item-row">
                   <a
-                    href={isRelay ? `https://nostr.watch/relay/${encodeURIComponent(t.value.replace(/^wss?:\/\//, ''))}` : t.value}
+                    href={isRelay ? `https://nostr.watch/relay/${encodeURIComponent(t.value.replace(/^wss?:\/\//, ''))}` : safeHttpUrl(t.value)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="list-item-link"

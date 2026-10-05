@@ -2,6 +2,7 @@ import React from 'react';
 import { extractEventMetadata, getKindLabel, encodeNaddr, encodeNpub } from '../kinds.js';
 import { ProfileAvatar, shortifyNpub } from './ProfileAvatar.jsx';
 import { FormattedContent } from './FormattedContent.jsx';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function ListComponent({ event, profileMap }) {
   const meta = extractEventMetadata(event);
@@ -56,7 +57,7 @@ export function ListComponent({ event, profileMap }) {
                   : profileMap[item.value]
                 : null;
               const name = pInfo ? pInfo.name || pInfo.display_name : shortifyNpub(item.value);
-              const pic = pInfo?.picture || `https://robohash.org/${item.value}?set=set5`;
+              const pic = safeHttpUrl(pInfo?.picture) || `https://robohash.org/${item.value}?set=set5`;
               const profileUrl = isGitFollowList
                 ? `https://gitworkshop.dev/${encodeNpub(item.value)}`
                 : `https://njump.me/${item.value}`;
@@ -107,7 +108,7 @@ export function ListComponent({ event, profileMap }) {
                 return (
                   <div key={idx} className="list-item-row">
                     <a
-                      href={item.value}
+                      href={safeHttpUrl(item.value)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="list-item-link"
@@ -131,7 +132,7 @@ export function ListComponent({ event, profileMap }) {
                 return (
                   <div key={idx} className="list-item-row">
                     <a
-                      href={isRelay ? `https://nostr.watch/relay/${encodeURIComponent(item.value.replace(/^wss?:\/\//, ''))}` : item.value}
+                      href={isRelay ? `https://nostr.watch/relay/${encodeURIComponent(item.value.replace(/^wss?:\/\//, ''))}` : safeHttpUrl(item.value)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="list-item-link"
@@ -166,7 +167,7 @@ export function ListComponent({ event, profileMap }) {
                 return (
                   <div key={idx} className="list-item-row">
                     <a
-                      href={item.value}
+                      href={safeHttpUrl(item.value)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="list-item-link"

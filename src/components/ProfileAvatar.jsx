@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeHttpUrl } from '../safeUrl.js';
 
 export function shortifyNpub(npub) {
   if (!npub || typeof npub !== 'string') return npub || '';
@@ -9,7 +10,7 @@ export function shortifyNpub(npub) {
 export function ProfileAvatar({ pubkey, profileMap }) {
   const profile = (profileMap && profileMap.get ? profileMap.get(pubkey) : profileMap?.[pubkey]) || {};
   const name = profile.display_name || profile.name || shortifyNpub(pubkey);
-  const picture = profile.picture || `https://robohash.org/${pubkey}?set=set5`;
+  const picture = safeHttpUrl(profile.picture) || `https://robohash.org/${pubkey}?set=set5`;
 
   return (
     <div className="user-info">
