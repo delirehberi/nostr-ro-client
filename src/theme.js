@@ -60,6 +60,27 @@ export function sanitizeUrl(url) {
   return null;
 }
 
+const FONT_FORMATS = {
+  woff2: 'woff2',
+  woff: 'woff',
+  ttf: 'truetype',
+  otf: 'opentype',
+};
+
+/**
+ * CSS `format()` hint for a font URL, based on its file extension.
+ * @param {string} url
+ * @returns {string|null} Format name, or null when the type cannot be inferred
+ */
+export function getFontFormat(url) {
+  try {
+    const ext = new URL(url).pathname.split('.').pop().toLowerCase();
+    return FONT_FORMATS[ext] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * Calculate relative luminance of a hex color (0 to 1) per WCAG 2.1.
  * @param {string} hexColor
@@ -213,7 +234,7 @@ export function generateThemeCss(theme) {
       fontFaceDeclarations += `
     @font-face {
       font-family: "${font.family}";
-      src: url("${font.url}") format("woff2");
+      src: url("${font.url}")${getFontFormat(font.url) ? ` format("${getFontFormat(font.url)}")` : ''};
       font-display: swap;
     }`;
     }

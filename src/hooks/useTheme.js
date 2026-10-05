@@ -2,6 +2,42 @@ import { useState, useEffect } from 'react';
 import { parseThemeEvent, generateThemeCss } from '../theme.js';
 import { queryRelays } from '../relayClient.js';
 
+const STYLE_ELEMENT_ID = 'nostr-dynamic-theme';
+
+/**
+ * Fetch the theme definition (kind 36767) a kind 16767 event points at, if any.
+ * Returns a map keyed by the referencing tag value, as parseThemeEvent expects.
+ */
+async function fetchReferencedTheme(activeEvent, relays) {
+  const referenced = new Map();
+
+  const aTag = activeEvent.tags.find((t) => t[0] === 'a' && t[1]);
+  if (aTag) {
+    const [kind, author, ...dParts] = aTag[1].split(':');
+    if (kind === '36767' && author) {
+      const { events } = await queryRelays(
+        relays,
+        { kinds: [36767], authors: [author], '#d': [dParts.join(':')], limit: 5 },
+        { timeout: 3000, subPrefix: 'thmref' }
+      );
+      events.sort((a, b) => b.created_at - a.created_at);
+      if (events[0]) referenced.set(aTag[1], events[0]);
+    }
+    return referenced;
+  }
+
+  const eTag = activeEvent.tags.find((t) => t[0] === 'e' && t[1]);
+  if (eTag) {
+    const { events } = await queryRelays(
+      relays,
+      { ids: [eTag[1]], kinds: [36767] },
+      { timeout: 3000, subPrefix: 'thmref' }
+    );
+    if (events[0]) referenced.set(eTag[1], events[0]);
+  }
+  return referenced;
+}
+
 export function useTheme(pubkey, relays = []) {
   const [theme, setTheme] = useState(null);
 
@@ -15,14 +51,20 @@ export function useTheme(pubkey, relays = []) {
       limit: 5,
     };
 
-    queryRelays(relays, filter, { timeout: 3000, subPrefix: 'thm' }).then(({ events: themeEvents }) => {
+    (async () => {
+      const { events: themeEvents } = await queryRelays(relays, filter, { timeout: 3000, subPrefix: 'thm' });
       if (!isMounted || themeEvents.length === 0) return;
       themeEvents.sort((a, b) => b.created_at - a.created_at);
-      const parsed = parseThemeEvent(themeEvents[0], new Map());
+      const activeThemeEvent = themeEvents[0];
+
+      const referenced = await fetchReferencedTheme(activeThemeEvent, relays);
+      if (!isMounted) return;
+
+      const parsed = parseThemeEvent(activeThemeEvent, referenced);
       if (parsed) {
         setTheme(parsed);
       }
-    });
+    })();
 
     return () => {
       isMounted = false;
@@ -34,13 +76,12 @@ export function useTheme(pubkey, relays = []) {
     const themeCss = generateThemeCss(theme);
     if (!themeCss) return;
 
-    let styleEl = document.getElementById('nostr-dynamic-theme');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'nostr-dynamic-theme';
-      document.head.appendChild(styleEl);
-    }
-    styleEl.innerHTML = themeCss;
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ELEMENT_ID;
+    styleEl.textContent = themeCss;
+    document.head.appendChild(styleEl);
+
+    return () => styleEl.remove();
   }, [theme]);
 
   return theme;
