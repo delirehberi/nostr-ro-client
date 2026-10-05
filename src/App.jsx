@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { nip19 } from 'nostr-tools';
 import { FilterBar } from './components/FilterBar.jsx';
 import { CommunityBadge } from './components/CommunityBadge.jsx';
 import { EventCard } from './components/EventCard.jsx';
@@ -9,6 +8,7 @@ import { useProfiles } from './hooks/useProfiles.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useNostrFeed } from './hooks/useNostrFeed.js';
 import { getDefaultRelays } from './relays.js';
+import { parseLocation, buildFeedUrl } from './urlState.js';
 
 const DEFAULT_PUBKEY = '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a';
 const DEFAULT_RELAYS = getDefaultRelays();
@@ -17,6 +17,7 @@ export function App() {
   const [activeCategory, setActiveCategory] = useState('notes');
   const [activeSub, setActiveSub] = useState('all');
   const [singlePostId, setSinglePostId] = useState(null);
+  const [invalidPostUrl, setInvalidPostUrl] = useState(false);
 
   const sentinelRef = useRef(null);
   const fetchedCategoriesRef = useRef(new Set(['notes']));
@@ -35,29 +36,23 @@ export function App() {
     categoryCounts,
     loadOlderEvents,
     fetchCategoryEvents,
+    fetchEvent,
   } = useNostrFeed(DEFAULT_PUBKEY, DEFAULT_RELAYS, requestProfiles);
   const hasMore = hasMoreFor(activeCategory);
 
-  // Parse Initial URL (Path & Query)
+  // Sync state from the URL (initial load and back/forward navigation)
   useEffect(() => {
     const handleUrlChange = () => {
-      const path = window.location.pathname;
-      if (path.startsWith('/p/')) {
-        const rawId = path.slice(3);
-        let hexId = rawId;
-        if (rawId.startsWith('note1') || rawId.startsWith('nevent1')) {
-          try {
-            const decoded = nip19.decode(rawId);
-            if (decoded.type === 'note') hexId = decoded.data;
-            else if (decoded.type === 'nevent') hexId = decoded.data.id;
-          } catch (_) {}
-        }
-        setSinglePostId(hexId);
+      const state = parseLocation(window.location);
+      if (state.view === 'post') {
+        // An undecodable id still opens the post view (showing an error) instead of the feed.
+        setSinglePostId(state.postId ?? 'invalid');
+        setInvalidPostUrl(state.postId === null);
       } else {
         setSinglePostId(null);
-        const params = new URLSearchParams(window.location.search);
-        setActiveCategory(params.get('kind') || 'notes');
-        setActiveSub(params.get('sub') || 'all');
+        setInvalidPostUrl(false);
+        setActiveCategory(state.category);
+        setActiveSub(state.sub);
       }
     };
 
@@ -66,30 +61,27 @@ export function App() {
     return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
+  // Fetch a category's events the first time it becomes active (whether via tab click or URL)
+  useEffect(() => {
+    if (activeCategory !== 'all' && !fetchedCategoriesRef.current.has(activeCategory)) {
+      fetchedCategoriesRef.current.add(activeCategory);
+      fetchCategoryEvents(activeCategory);
+    }
+  }, [activeCategory, fetchCategoryEvents]);
+
+  // Fetch a directly opened post that is not part of the loaded feed
+  useEffect(() => {
+    if (singlePostId && !invalidPostUrl && !isLoading && !eventMap.has(singlePostId)) {
+      fetchEvent(singlePostId);
+    }
+  }, [singlePostId, invalidPostUrl, isLoading, eventMap, fetchEvent]);
+
   // Category Selection Handler
-  const handleSelectCategory = useCallback(
-    (cat, sub) => {
-      setActiveCategory(cat);
-      setActiveSub(sub);
-
-      const params = new URLSearchParams(window.location.search);
-      if (cat === 'notes') params.delete('kind');
-      else params.set('kind', cat);
-
-      if (sub === 'all') params.delete('sub');
-      else params.set('sub', sub);
-
-      const query = params.toString();
-      const newUrl = '/' + (query ? '?' + query : '');
-      window.history.pushState({ category: cat, sub }, '', newUrl);
-
-      if (cat !== 'all' && !fetchedCategoriesRef.current.has(cat)) {
-        fetchedCategoriesRef.current.add(cat);
-        fetchCategoryEvents(cat);
-      }
-    },
-    [fetchCategoryEvents]
-  );
+  const handleSelectCategory = useCallback((cat, sub) => {
+    setActiveCategory(cat);
+    setActiveSub(sub);
+    window.history.pushState({ category: cat, sub }, '', buildFeedUrl(cat, sub));
+  }, []);
 
   // Infinite Scroll Observer
   useEffect(() => {
@@ -135,12 +127,13 @@ export function App() {
         <>
           <div className="back-link-bar">
             <a
-              href="/"
+              href={buildFeedUrl(activeCategory, activeSub)}
               className="back-link"
               onClick={(e) => {
                 e.preventDefault();
                 setSinglePostId(null);
-                window.history.pushState({}, '', '/');
+                setInvalidPostUrl(false);
+                window.history.pushState({}, '', buildFeedUrl(activeCategory, activeSub));
               }}
             >
               ← Back to all posts
@@ -157,7 +150,7 @@ export function App() {
               </ErrorBoundary>
             ) : (
               <div className="no-posts">
-                {isLoading ? 'Loading post...' : 'Event not found on Nostr relays.'}
+                {isLoading ? 'Loading post...' : invalidPostUrl ? 'Invalid post link.' : 'Event not found on Nostr relays.'}
               </div>
             )}
           </main>

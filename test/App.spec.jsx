@@ -59,6 +59,42 @@ describe('App relay failures', () => {
   });
 });
 
+describe('App URL handling', () => {
+  const OWNER = '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a';
+
+  it('fetches the category from the URL on first load', async () => {
+    window.history.replaceState({}, '', '/?kind=books');
+    const filters = [];
+    installMockWebSocket((url, filter, ws) => {
+      filters.push(filter);
+      ws.emit(['EOSE', ws.subId]);
+    });
+    render(<App />);
+    await waitFor(() => expect(filters.some((f) => f.kinds && f.kinds.includes(30040))).toBe(true));
+  });
+
+  it('loads a directly opened post that is not in the feed, and goes back to the right feed URL', async () => {
+    const id = 'cd'.repeat(32);
+    window.history.replaceState({}, '', `/p/${id}`);
+    installMockWebSocket((url, filter, ws) => {
+      if (filter.ids && filter.ids.includes(id)) {
+        ws.emit(['EVENT', ws.subId, { id, pubkey: OWNER, kind: 1, created_at: 1, tags: [], content: 'old post' }]);
+      }
+      ws.emit(['EOSE', ws.subId]);
+    });
+    render(<App />);
+    expect(await screen.findByText('old post')).toBeInTheDocument();
+    expect(screen.getByText('← Back to all posts').getAttribute('href')).toBe('/');
+  });
+
+  it('shows an invalid-link message for undecodable post ids', async () => {
+    window.history.replaceState({}, '', '/p/note1garbage');
+    installMockWebSocket((url, filter, ws) => ws.emit(['EOSE', ws.subId]));
+    render(<App />);
+    expect(await screen.findByText('Invalid post link.')).toBeInTheDocument();
+  });
+});
+
 describe('ErrorBoundary', () => {
   it('renders a fallback when a child throws', () => {
     const Boom = () => {

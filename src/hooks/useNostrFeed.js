@@ -238,6 +238,9 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     [pubkey, relays, processNewEvents]
   );
 
+  /** Fetch a single event by id (e.g. a directly opened post) into eventMap. */
+  const fetchEvent = useCallback((id) => fetchParents([id]), [fetchParents]);
+
   /** Whether the paging query used for `category` can still return older events. */
   const hasMoreFor = useCallback(
     (category = 'all') => !exhausted.has(cursorsRef.current.has(category) ? category : 'all'),
@@ -265,6 +268,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     categoryCounts,
     loadOlderEvents,
     fetchCategoryEvents,
+    fetchEvent,
   };
 }
 
