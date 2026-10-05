@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
+import { queryRelays } from '../relayClient.js';
 
 const CATEGORY_KINDS_MAP = {
   books: [30040, 30041, 30001, 30003, 1985],
@@ -36,59 +37,10 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         ids: needed.slice(0, 50),
       };
 
-      const parentEvents = [];
-      const fetchPromises = relays.map((relayUrl) => {
-        return new Promise((resolve) => {
-          let ws;
-          const subId = 'par_' + Math.random().toString(36).slice(2, 6);
-          const timer = setTimeout(() => {
-            if (ws) {
-              try {
-                ws.close();
-              } catch (_) {}
-            }
-            resolve();
-          }, 3000);
-
-          try {
-            ws = new WebSocket(relayUrl);
-            ws.onopen = () => {
-              try {
-                ws.send(JSON.stringify(['REQ', subId, filter]));
-              } catch (_) {
-                resolve();
-              }
-            };
-            ws.onmessage = (msg) => {
-              try {
-                const data = JSON.parse(msg.data);
-                if (data[0] === 'EVENT' && data[2]) {
-                  parentEvents.push(data[2]);
-                } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                  clearTimeout(timer);
-                  try {
-                    ws.close();
-                  } catch (_) {}
-                  resolve();
-                }
-              } catch (_) {}
-            };
-            ws.onerror = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-            ws.onclose = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-          } catch (_) {
-            clearTimeout(timer);
-            resolve();
-          }
-        });
+      const { events: parentEvents } = await queryRelays(relays, filter, {
+        timeout: 3000,
+        subPrefix: 'par',
       });
-
-      await Promise.all(fetchPromises);
 
       if (parentEvents.length > 0) {
         const authorPubkeys = [];
@@ -204,61 +156,9 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       limit: 100,
     };
 
-    const incomingEvents = new Map();
-    const fetchPromises = relays.map((relayUrl) => {
-      return new Promise((resolve) => {
-        let ws;
-        const subId = 'init_' + Math.random().toString(36).slice(2, 6);
-        const timer = setTimeout(() => {
-          if (ws) {
-            try {
-              ws.close();
-            } catch (_) {}
-          }
-          resolve();
-        }, 3500);
-
-        try {
-          ws = new WebSocket(relayUrl);
-          ws.onopen = () => {
-            try {
-              ws.send(JSON.stringify(['REQ', subId, filter]));
-            } catch (_) {
-              resolve();
-            }
-          };
-          ws.onmessage = (msg) => {
-            try {
-              const data = JSON.parse(msg.data);
-              if (data[0] === 'EVENT' && data[2]) {
-                incomingEvents.set(data[2].id, data[2]);
-              } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                clearTimeout(timer);
-                try {
-                  ws.close();
-                } catch (_) {}
-                resolve();
-              }
-            } catch (_) {}
-          };
-          ws.onerror = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          ws.onclose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        } catch (_) {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-    });
-
-    Promise.all(fetchPromises).then(() => {
+    queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming }) => {
       if (!isMounted) return;
-      processNewEvents(Array.from(incomingEvents.values()));
+      processNewEvents(incoming);
       setIsLoading(false);
     });
 
@@ -287,61 +187,8 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       limit: 50,
     };
 
-    const incomingEvents = new Map();
-    const fetchPromises = relays.map((relayUrl) => {
-      return new Promise((resolve) => {
-        let ws;
-        const subId = 'more_' + Math.random().toString(36).slice(2, 6);
-        const timer = setTimeout(() => {
-          if (ws) {
-            try {
-              ws.close();
-            } catch (_) {}
-          }
-          resolve();
-        }, 3500);
+    const { events: newItems } = await queryRelays(relays, filter, { subPrefix: 'more' });
 
-        try {
-          ws = new WebSocket(relayUrl);
-          ws.onopen = () => {
-            try {
-              ws.send(JSON.stringify(['REQ', subId, filter]));
-            } catch (_) {
-              resolve();
-            }
-          };
-          ws.onmessage = (msg) => {
-            try {
-              const data = JSON.parse(msg.data);
-              if (data[0] === 'EVENT' && data[2]) {
-                incomingEvents.set(data[2].id, data[2]);
-              } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                clearTimeout(timer);
-                try {
-                  ws.close();
-                } catch (_) {}
-                resolve();
-              }
-            } catch (_) {}
-          };
-          ws.onerror = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          ws.onclose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        } catch (_) {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-    });
-
-    await Promise.all(fetchPromises);
-
-    const newItems = Array.from(incomingEvents.values());
     if (newItems.length === 0) {
       setHasMore(false);
     } else {
@@ -363,61 +210,9 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         limit: 100,
       };
 
-      const incomingEvents = new Map();
-      const fetchPromises = relays.map((relayUrl) => {
-        return new Promise((resolve) => {
-          let ws;
-          const subId = 'cat_' + category + '_' + Math.random().toString(36).slice(2, 6);
-          const timer = setTimeout(() => {
-            if (ws) {
-              try {
-                ws.close();
-              } catch (_) {}
-            }
-            resolve();
-          }, 3500);
-
-          try {
-            ws = new WebSocket(relayUrl);
-            ws.onopen = () => {
-              try {
-                ws.send(JSON.stringify(['REQ', subId, filter]));
-              } catch (_) {
-                resolve();
-              }
-            };
-            ws.onmessage = (msg) => {
-              try {
-                const data = JSON.parse(msg.data);
-                if (data[0] === 'EVENT' && data[2]) {
-                  incomingEvents.set(data[2].id, data[2]);
-                } else if (data[0] === 'EOSE' || data[0] === 'CLOSED') {
-                  clearTimeout(timer);
-                  try {
-                    ws.close();
-                  } catch (_) {}
-                  resolve();
-                }
-              } catch (_) {}
-            };
-            ws.onerror = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-            ws.onclose = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-          } catch (_) {
-            clearTimeout(timer);
-            resolve();
-          }
-        });
-      });
-
-      await Promise.all(fetchPromises);
-      if (incomingEvents.size > 0) {
-        processNewEvents(Array.from(incomingEvents.values()));
+      const { events: incoming } = await queryRelays(relays, filter, { subPrefix: 'cat' });
+      if (incoming.length > 0) {
+        processNewEvents(incoming);
       }
     },
     [pubkey, relays, processNewEvents]
