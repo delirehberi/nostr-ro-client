@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
 import { queryRelays } from '../relayClient.js';
+import { acceptEvent } from '../eventValidation.js';
 
 const CATEGORY_KINDS_MAP = {
   books: [30040, 30041, 30001, 30003, 1985],
@@ -79,7 +80,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         if ((e.kind === 6 || e.kind === 16) && e.content && e.content.trim().startsWith('{')) {
           try {
             const innerEvent = JSON.parse(e.content);
-            if (innerEvent && innerEvent.id && innerEvent.pubkey) {
+            if (acceptEvent(innerEvent)) {
               if (!eventMapRef.current.has(innerEvent.id)) {
                 eventMapRef.current.set(innerEvent.id, innerEvent);
               }

@@ -6,6 +6,8 @@
  * de-duplicated events.
  */
 
+import { acceptEvent } from './eventValidation.js';
+
 const DEFAULT_TIMEOUT_MS = 3500;
 
 /**
@@ -96,12 +98,13 @@ function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, su
  *
  * @param {string[]} relays
  * @param {object} filter
- * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string, accept?: (event: object) => boolean}} [options]
- *   `accept` drops events that should not be trusted (see `acceptEvent`).
+ * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string, verify?: boolean, accept?: (event: object) => boolean}} [options]
+ *   By default every event must match the filter's authors/kinds/ids and carry a valid
+ *   signature (see `acceptEvent`); pass `verify: false` to skip that. `accept` is an extra predicate.
  * @returns {Promise<{events: object[], ok: boolean}>} `ok` is true when at least one relay answered with EOSE.
  */
 export async function queryRelays(relays, filter, options = {}) {
-  const { accept, ...rest } = options;
+  const { accept, verify = true, ...rest } = options;
   const results = await Promise.all(relays.map((url) => queryRelay(url, filter, rest)));
 
   const byId = new Map();
@@ -110,6 +113,7 @@ export async function queryRelays(relays, filter, options = {}) {
     if (result.ok) ok = true;
     for (const event of result.events) {
       if (!event || typeof event.id !== 'string' || byId.has(event.id)) continue;
+      if (verify && !acceptEvent(event, filter)) continue;
       if (accept && !accept(event)) continue;
       byId.set(event.id, event);
     }
