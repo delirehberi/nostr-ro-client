@@ -3,6 +3,7 @@ import { nip19 } from 'nostr-tools';
 import { FilterBar } from './components/FilterBar.jsx';
 import { CommunityBadge } from './components/CommunityBadge.jsx';
 import { EventCard } from './components/EventCard.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 import { classifyEvent } from './kinds.js';
 import { useProfiles } from './hooks/useProfiles.js';
 import { useTheme } from './hooks/useTheme.js';
@@ -28,6 +29,8 @@ export function App() {
     eventMap,
     isLoading,
     isLoadingMore,
+    error,
+    retry,
     hasMoreFor,
     categoryCounts,
     loadOlderEvents,
@@ -145,12 +148,13 @@ export function App() {
           </div>
           <main id="events-feed">
             {visibleEvents.length > 0 ? (
-              <EventCard
-                key={singlePostId}
-                event={visibleEvents[0]}
-                profileMap={profileMap}
-                eventMap={eventMap}
-              />
+              <ErrorBoundary key={singlePostId}>
+                <EventCard
+                  event={visibleEvents[0]}
+                  profileMap={profileMap}
+                  eventMap={eventMap}
+                />
+              </ErrorBoundary>
             ) : (
               <div className="no-posts">
                 {isLoading ? 'Loading post...' : 'Event not found on Nostr relays.'}
@@ -167,21 +171,37 @@ export function App() {
             onSelectCategory={handleSelectCategory}
           />
 
+          {error && (
+            <div className="relay-error" role="alert">
+              <span>{error}</span>{' '}
+              <button
+                type="button"
+                className="relay-error-retry"
+                onClick={() => (events.length === 0 ? retry() : loadOlderEvents(activeCategory))}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           <main id="events-feed">
             {visibleEvents.length > 0 ? (
               visibleEvents.map((evt) => (
-                <EventCard
-                  key={evt.id}
-                  event={evt}
-                  profileMap={profileMap}
-                  eventMap={eventMap}
-                />
+                <ErrorBoundary key={evt.id}>
+                  <EventCard
+                    event={evt}
+                    profileMap={profileMap}
+                    eventMap={eventMap}
+                  />
+                </ErrorBoundary>
               ))
             ) : (
               <div className="no-posts">
                 {isLoading
                   ? 'Connecting to Nostr relays...'
-                  : 'No events found in this category.'}
+                  : error
+                    ? 'Events could not be loaded.'
+                    : 'No events found in this category.'}
               </div>
             )}
           </main>

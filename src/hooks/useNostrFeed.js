@@ -21,6 +21,8 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   const [eventMap, setEventMap] = useState(() => new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const [exhausted, setExhausted] = useState(() => new Set());
 
   const eventMapRef = useRef(new Map());
@@ -160,22 +162,29 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
     let isMounted = true;
     setIsLoading(true);
+    setError(null);
 
     const filter = {
       authors: [pubkey],
       limit: 100,
     };
 
-    queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming }) => {
+    queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming, ok }) => {
       if (!isMounted) return;
       processNewEvents(incoming, 'all');
+      if (!ok && incoming.length === 0) {
+        setError('Could not reach the Nostr relays.');
+      }
       setIsLoading(false);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [pubkey, relays, processNewEvents]);
+  }, [pubkey, relays, processNewEvents, attempt]);
+
+  /** Re-run the initial fetch after a failure. */
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   // Load More (Infinite Scroll). Pages the category's own query when it has one,
   // otherwise the unfiltered one.
@@ -196,7 +205,10 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
       if (newItems.length > 0) {
         processNewEvents(newItems, key);
-      } else if (ok) {
+        setError(null);
+      } else if (!ok) {
+        setError('Could not load older events from the Nostr relays.');
+      } else {
         // Only a relay-confirmed empty page means we reached the end.
         setExhausted((prev) => new Set(prev).add(key));
       }
@@ -247,6 +259,8 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     eventMap,
     isLoading,
     isLoadingMore,
+    error,
+    retry,
     hasMoreFor,
     categoryCounts,
     loadOlderEvents,
