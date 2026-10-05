@@ -8,6 +8,17 @@ const VIDEO_REGEX = /\.(mp4|webm|ogg|mov)(?:\?[^#\s]*)?$/i;
 const IMAGE_REGEX = /\.(jpe?g|png|gif|bmp|webp|svg|avif)(?:\?[^#\s]*)?$/i;
 const NOSTR_MENTION_REGEX = /(?:nostr:)?\b((?:npub|note|nevent|nprofile|naddr|nrelay)1[0-9a-z]{20,})\b/g;
 
+/** Human-readable label for a media URL: its decoded file name, or a generic noun. */
+function describeMedia(url, fallback) {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || '');
+    const label = name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
+    return label && label.length <= 60 ? label : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function VideoPlayer({ url }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -16,7 +27,12 @@ function VideoPlayer({ url }) {
   }
 
   return (
-    <div className="video-container" onClick={() => setIsPlaying(true)}>
+    <button
+      type="button"
+      className="video-container"
+      aria-label={`Play video ${describeMedia(url, 'video')}`}
+      onClick={() => setIsPlaying(true)}
+    >
       <div className="play-icon">
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z" />
@@ -25,7 +41,7 @@ function VideoPlayer({ url }) {
       <span style={{ fontSize: '0.9em', marginTop: '0.5em', color: 'var(--meta)' }}>
         Play Video
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -51,10 +67,11 @@ export function FormattedContent({ content, profileMap }) {
                   return (
                     <div key={partIndex} className="youtube-embed">
                       <iframe
-                        src={`https://www.youtube.com/embed/${videoId}`}
-                        frameBorder="0"
+                        src={`https://www.youtube-nocookie.com/embed/${videoId}`}
                         allowFullScreen
                         loading="lazy"
+                        referrerPolicy="no-referrer"
+                        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
                         title="YouTube video"
                       />
                     </div>
@@ -71,7 +88,7 @@ export function FormattedContent({ content, profileMap }) {
                   return (
                     <div key={partIndex} className="post-image-wrapper">
                       <a href={part} target="_blank" rel="noopener noreferrer">
-                        <img src={part} className="post-image" alt="Embedded Nostr Media" loading="lazy" />
+                        <img src={part} className="post-image" alt={describeMedia(part, 'Embedded image')} loading="lazy" />
                       </a>
                     </div>
                   );

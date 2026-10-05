@@ -1781,3 +1781,14 @@ video {
   cursor: pointer;
   font: inherit;
 }
+
+button.video-container {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+button.video-container:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
