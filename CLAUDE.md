@@ -32,7 +32,7 @@ src/
     useProfiles.js              — Batched Kind 0 profile fetcher & caching
     useTheme.js                 — Kind 16767 / 36767 custom theme loader
     useBookMetadata.js / useMovieMetadata.js — external metadata lookups for cards
-  relays.js                     — Cache relay URL builder and relay URL sanitizing
+  relays.js                     — Default relay list (DEFAULT_RELAYS) and relay URL sanitizing/normalizing
   kinds.js                      — Event classification taxonomy and metadata extraction
   theme.js                      — Nostr Kind 16767 & 36767 theme parser & CSS generator
   styles.css                    — CSS custom properties, responsive card styles, dark mode
@@ -46,7 +46,7 @@ test/
   relays.spec.js / community-badge.spec.jsx — Relay URL and CommunityBadge tests
   index.spec.js                 — Worker asset, cache and header tests
 index.html                      — SPA HTML entry with emre.xyz header/footer custom elements
-vite.config.js                  — Vite bundler and Vitest configuration
+vite.config.js                  — Vite bundler configuration (Vitest config lives in vitest.config.js)
 wrangler.jsonc                  — Cloudflare Worker configuration with SPA static assets
 ```
 
@@ -82,7 +82,7 @@ make test              # run full test suite (vitest run)
 make test-watch        # run test suite in watch mode
 make deploy            # build and deploy to Cloudflare
 make tail              # tail live worker logs
-make clean             # clean local build/cache artifacts (only removes .wrangler)
+make clean             # clean local build/cache artifacts (removes .wrangler and dist)
 ```
 
 Run a single test file or test name (code style per `.prettierrc`/`.editorconfig`: 2 spaces, single quotes):
