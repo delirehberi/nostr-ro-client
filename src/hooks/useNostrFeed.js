@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
 import { classifyEvent } from '../kinds.js';
-import { queryRelays } from '../relayClient.js';
+import { queryRelays, chunk } from '../relayClient.js';
 import { acceptEvent } from '../eventValidation.js';
 
 const CATEGORY_KINDS_MAP = {
@@ -13,6 +13,8 @@ const CATEGORY_KINDS_MAP = {
   articles: [30023, 30024],
   highlights: [9802],
 };
+
+const MAX_IDS_PER_REQUEST = 50;
 
 export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   const [events, setEvents] = useState([]);
@@ -27,21 +29,22 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
   const fetchParents = useCallback(
     async (parentIds) => {
-      const needed = parentIds.filter(
+      const needed = Array.from(new Set(parentIds)).filter(
         (id) => !eventMapRef.current.has(id) && !fetchedParentIdsRef.current.has(id)
       );
       if (needed.length === 0 || relays.length === 0) return;
 
       needed.forEach((id) => fetchedParentIdsRef.current.add(id));
 
-      const filter = {
-        ids: needed.slice(0, 50),
-      };
-
-      const { events: parentEvents } = await queryRelays(relays, filter, {
-        timeout: 3000,
-        subPrefix: 'par',
-      });
+      const results = await Promise.all(
+        chunk(needed, MAX_IDS_PER_REQUEST).map(async (ids) => {
+          const { events, ok } = await queryRelays(relays, { ids }, { timeout: 3000, subPrefix: 'par' });
+          // Let ids from a failed request be retried by a later call.
+          if (!ok) ids.forEach((id) => fetchedParentIdsRef.current.delete(id));
+          return events;
+        })
+      );
+      const parentEvents = results.flat();
 
       if (parentEvents.length > 0) {
         const authorPubkeys = [];

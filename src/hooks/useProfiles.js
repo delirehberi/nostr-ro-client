@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
-import { queryRelays } from '../relayClient.js';
+import { queryRelays, chunk } from '../relayClient.js';
+
+const MAX_AUTHORS_PER_REQUEST = 50;
 
 export function useProfiles(relays = []) {
   const [profileMap, setProfileMap] = useState(() => new Map());
@@ -12,15 +14,22 @@ export function useProfiles(relays = []) {
 
     pubkeysToFetch.forEach((pk) => fetchedPubkeysRef.current.add(pk));
 
-    const filter = {
-      kinds: [0],
-      authors: pubkeysToFetch.slice(0, 50),
-    };
-
     const newProfiles = new Map();
     const profileCreatedAtMap = new Map();
 
-    const { events } = await queryRelays(relays, filter, { timeout: 3000, subPrefix: 'prof' });
+    const results = await Promise.all(
+      chunk(pubkeysToFetch, MAX_AUTHORS_PER_REQUEST).map(async (authors) => {
+        const { events, ok } = await queryRelays(
+          relays,
+          { kinds: [0], authors },
+          { timeout: 3000, subPrefix: 'prof' }
+        );
+        // Let pubkeys from a failed request be retried by a later call.
+        if (!ok) authors.forEach((pk) => fetchedPubkeysRef.current.delete(pk));
+        return events;
+      })
+    );
+    const events = results.flat();
     for (const event of events) {
       let content;
       try {
@@ -28,6 +37,7 @@ export function useProfiles(relays = []) {
       } catch (_) {
         continue;
       }
+      if (!content || typeof content !== 'object') continue;
       const existingCreatedAt = profileCreatedAtMap.get(event.pubkey) || 0;
       if (event.created_at > existingCreatedAt) {
         newProfiles.set(event.pubkey, content);
