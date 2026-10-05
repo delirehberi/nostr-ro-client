@@ -1,17 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DEFAULT_CACHE_RELAY_BASE,
-  DEFAULT_UPSTREAM_RELAYS,
-  sanitizeRelayUrl,
-  buildCacheRelayUrl,
-  getDefaultRelays,
-} from '../src/relays.js';
+import { DEFAULT_RELAYS, sanitizeRelayUrl, normalizeRelays, getDefaultRelays } from '../src/relays.js';
 
-describe('relays configuration and cache relay builder', () => {
+describe('relays configuration', () => {
   describe('sanitizeRelayUrl', () => {
     it('sanitizes valid wss:// and ws:// URLs', () => {
       expect(sanitizeRelayUrl('wss://relay.damus.io')).toBe('wss://relay.damus.io');
-      expect(sanitizeRelayUrl('wss://nos.lol/')).toBe('wss://nos.lol');
+      expect(sanitizeRelayUrl('wss://relay.emre.xyz/')).toBe('wss://relay.emre.xyz');
       expect(sanitizeRelayUrl('  ws://localhost:8080/  ')).toBe('ws://localhost:8080');
     });
 
@@ -25,50 +19,31 @@ describe('relays configuration and cache relay builder', () => {
     });
   });
 
-  describe('buildCacheRelayUrl', () => {
-    it('builds cache relay URL with comma-separated upstream relays', () => {
-      const upstreams = [
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://relay.primal.net',
-      ];
-      const url = buildCacheRelayUrl(upstreams, 'wss://cache.nostr.org.tr');
-      expect(url).toBe(
-        'wss://cache.nostr.org.tr?relays=wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net'
-      );
+  describe('normalizeRelays', () => {
+    it('drops invalid entries, strips trailing slashes and de-duplicates', () => {
+      expect(
+        normalizeRelays(['wss://a.io/', 'wss://a.io', 'http://nope', 'bad', 'wss://b.io'])
+      ).toEqual(['wss://a.io', 'wss://b.io']);
     });
 
-    it('uses DEFAULT_UPSTREAM_RELAYS and DEFAULT_CACHE_RELAY_BASE when arguments are omitted', () => {
-      const url = buildCacheRelayUrl();
-      expect(url).toContain('wss://cache.nostr.org.tr?relays=');
-      for (const upstream of DEFAULT_UPSTREAM_RELAYS) {
-        expect(url).toContain(upstream);
-      }
-    });
-
-    it('deduplicates upstream relays and strips trailing slashes', () => {
-      const upstreams = [
-        'wss://relay.damus.io/',
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://nos.lol/',
-      ];
-      const url = buildCacheRelayUrl(upstreams);
-      expect(url).toBe('wss://cache.nostr.org.tr?relays=wss://relay.damus.io,wss://nos.lol');
-    });
-
-    it('returns base cache relay URL if no valid upstream relays provided', () => {
-      expect(buildCacheRelayUrl([])).toBe(DEFAULT_CACHE_RELAY_BASE);
-      expect(buildCacheRelayUrl(['invalid-url', 'http://not-ws'])).toBe(DEFAULT_CACHE_RELAY_BASE);
+    it('returns an empty array for non-arrays', () => {
+      expect(normalizeRelays(undefined)).toEqual([]);
     });
   });
 
   describe('getDefaultRelays', () => {
-    it('returns array with a single unified cache relay URL', () => {
-      const relays = getDefaultRelays();
-      expect(Array.isArray(relays)).toBe(true);
-      expect(relays.length).toBe(1);
-      expect(relays[0].startsWith('wss://cache.nostr.org.tr?relays=')).toBe(true);
+    it('uses damus, primal, ditto and relay.emre.xyz directly', () => {
+      expect(getDefaultRelays()).toEqual([
+        'wss://relay.damus.io',
+        'wss://relay.primal.net',
+        'wss://relay.ditto.pub',
+        'wss://relay.emre.xyz',
+      ]);
+    });
+
+    it('only contains valid websocket URLs and no cache relay', () => {
+      for (const relay of DEFAULT_RELAYS) expect(sanitizeRelayUrl(relay)).toBe(relay);
+      expect(getDefaultRelays().join(' ')).not.toContain('cache.nostr');
     });
   });
 });

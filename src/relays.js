@@ -1,18 +1,15 @@
 /**
- * Nostr Relay Configuration & Cache Relay Utilities
+ * Relay configuration.
  *
- * Configures the centralized read-only cache relay (wss://cache.nostr.org.tr)
- * which aggregates, caches, and proxies queries to specified upstream relays.
+ * The client queries these relays directly; results are merged and
+ * de-duplicated by `queryRelays` / `subscribeRelays` in relayClient.js.
  */
 
-export const DEFAULT_CACHE_RELAY_BASE = 'wss://cache.nostr.org.tr';
-
-export const DEFAULT_UPSTREAM_RELAYS = [
+export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.primal.net',
-  'wss://nos.lol',
   'wss://relay.ditto.pub',
-  'wss://nostr-pub.wellorder.net',
+  'wss://relay.emre.xyz',
 ];
 
 /**
@@ -32,47 +29,26 @@ export function sanitizeRelayUrl(url) {
 }
 
 /**
- * Constructs a cache relay URL formatted with upstream relays query parameter.
- * Example: wss://cache.nostr.org.tr?relays=wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net
+ * Returns the valid, de-duplicated relays among `relays` (trailing slashes stripped).
  *
- * @param {string[]} [upstreamRelays=DEFAULT_UPSTREAM_RELAYS] - Array of upstream WebSocket relay URLs
- * @param {string} [cacheBase=DEFAULT_CACHE_RELAY_BASE] - Base URL of the cache relay
- * @returns {string} Fully qualified cache relay endpoint URL
+ * @param {string[]} relays
+ * @returns {string[]}
  */
-export function buildCacheRelayUrl(
-  upstreamRelays = DEFAULT_UPSTREAM_RELAYS,
-  cacheBase = DEFAULT_CACHE_RELAY_BASE
-) {
-  const base = sanitizeRelayUrl(cacheBase) || DEFAULT_CACHE_RELAY_BASE;
-
-  if (!Array.isArray(upstreamRelays) || upstreamRelays.length === 0) {
-    return base;
-  }
-
-  const validRelays = [];
+export function normalizeRelays(relays) {
+  if (!Array.isArray(relays)) return [];
   const seen = new Set();
-
-  for (const relay of upstreamRelays) {
+  for (const relay of relays) {
     const sanitized = sanitizeRelayUrl(relay);
-    if (sanitized && !seen.has(sanitized)) {
-      seen.add(sanitized);
-      validRelays.push(sanitized);
-    }
+    if (sanitized) seen.add(sanitized);
   }
-
-  if (validRelays.length === 0) {
-    return base;
-  }
-
-  return `${base}?relays=${validRelays.join(',')}`;
+  return Array.from(seen);
 }
 
 /**
- * Retrieves the default array of relay endpoints for read-only subscriptions.
- * Returns an array containing the unified cache relay endpoint.
+ * Retrieves the relay endpoints used for read-only queries and subscriptions.
  *
- * @returns {string[]} Array of active relay URLs
+ * @returns {string[]} Array of relay URLs
  */
 export function getDefaultRelays() {
-  return [buildCacheRelayUrl(DEFAULT_UPSTREAM_RELAYS, DEFAULT_CACHE_RELAY_BASE)];
+  return normalizeRelays(DEFAULT_RELAYS);
 }

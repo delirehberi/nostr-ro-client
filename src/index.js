@@ -1,3 +1,5 @@
+import { DEFAULT_RELAYS } from './relays.js';
+
 /**
  * Worker entry: serves the built SPA from static assets and adds caching and
  * security headers. All Nostr traffic happens in the browser.
@@ -7,7 +9,7 @@
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const REVALIDATE_CACHE = 'no-cache';
 
-// Trusted hosts: the cache relay, the metadata APIs, and the shared emre.xyz header/footer assets.
+// Trusted hosts: the Nostr relays, the metadata APIs, and the shared emre.xyz header/footer assets.
 // Event content may embed arbitrary https images/video/fonts, hence the https: sources there.
 const CSP = [
   "default-src 'self'",
@@ -17,7 +19,7 @@ const CSP = [
   'img-src https: data:',
   'media-src https:',
   'frame-src https://www.youtube.com https://www.youtube-nocookie.com',
-  "connect-src 'self' wss://cache.nostr.org.tr https://openlibrary.org https://v3-cinemeta.strem.io https://emre.xyz",
+  `connect-src 'self' ${DEFAULT_RELAYS.join(' ')} https://openlibrary.org https://v3-cinemeta.strem.io https://emre.xyz`,
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'self' https://emre.xyz",
