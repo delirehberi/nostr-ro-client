@@ -1792,3 +1792,34 @@ button.video-container:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
+
+.git-patch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin: 0.6em 0;
+}
+
+.git-patch-pill {
+  padding: 0.15em 0.65em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--meta);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-patch-root,
+.git-patch-revision {
+  color: var(--link);
+  font-weight: 600;
+}
+
+.git-patch-add {
+  color: #16a34a;
+}
+
+.git-patch-del {
+  color: #dc2626;
+}
