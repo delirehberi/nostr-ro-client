@@ -21,11 +21,12 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   const [eventMap, setEventMap] = useState(() => new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [exhausted, setExhausted] = useState(() => new Set());
 
   const eventMapRef = useRef(new Map());
   const fetchedParentIdsRef = useRef(new Set());
-  const oldestTimestampRef = useRef(Infinity);
+  // Oldest created_at seen per paging query ('all' or a category), used as the `until` cursor.
+  const cursorsRef = useRef(new Map());
 
   const fetchParents = useCallback(
     async (parentIds) => {
@@ -66,15 +67,18 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
   );
 
   const processNewEvents = useCallback(
-    (newEventsList) => {
+    (newEventsList, cursorKey = null) => {
       const pubkeysToRequest = [];
       const parentIdsToRequest = [];
 
       newEventsList.forEach((e) => {
         if (!eventMapRef.current.has(e.id)) {
           eventMapRef.current.set(e.id, e);
-          if (e.created_at < oldestTimestampRef.current) {
-            oldestTimestampRef.current = e.created_at;
+        }
+        if (cursorKey && e.pubkey === pubkey) {
+          const current = cursorsRef.current.get(cursorKey);
+          if (current === undefined || e.created_at < current) {
+            cursorsRef.current.set(cursorKey, e.created_at);
           }
         }
         if (e.pubkey) pubkeysToRequest.push(e.pubkey);
@@ -130,9 +134,11 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         }
       });
 
-      const sorted = Array.from(eventMapRef.current.values()).sort(
-        (a, b) => b.created_at - a.created_at
-      );
+      // The feed only lists the owner's events; everything else (reply parents,
+      // quotes, reposted notes) stays in eventMap purely for lookups.
+      const sorted = Array.from(eventMapRef.current.values())
+        .filter((e) => e.pubkey === pubkey)
+        .sort((a, b) => b.created_at - a.created_at);
 
       setEvents(sorted);
       setEventMap(new Map(eventMapRef.current));
@@ -145,7 +151,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
         fetchParents(parentIdsToRequest);
       }
     },
-    [onRequestProfiles, fetchParents]
+    [pubkey, onRequestProfiles, fetchParents]
   );
 
   // Initial Fetch
@@ -162,7 +168,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
     queryRelays(relays, filter, { subPrefix: 'init' }).then(({ events: incoming }) => {
       if (!isMounted) return;
-      processNewEvents(incoming);
+      processNewEvents(incoming, 'all');
       setIsLoading(false);
     });
 
@@ -171,36 +177,34 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     };
   }, [pubkey, relays, processNewEvents]);
 
-  // Load More (Infinite Scroll)
-  const loadOlderEvents = useCallback(async () => {
-    if (
-      isLoadingMore ||
-      !hasMore ||
-      oldestTimestampRef.current === Infinity ||
-      !pubkey ||
-      relays.length === 0
-    ) {
-      return;
-    }
+  // Load More (Infinite Scroll). Pages the category's own query when it has one,
+  // otherwise the unfiltered one.
+  const loadOlderEvents = useCallback(
+    async (category = 'all') => {
+      const key = cursorsRef.current.has(category) ? category : 'all';
+      const cursor = cursorsRef.current.get(key);
+      if (isLoadingMore || exhausted.has(key) || cursor === undefined || !pubkey || relays.length === 0) {
+        return;
+      }
 
-    setIsLoadingMore(true);
+      setIsLoadingMore(true);
 
-    const filter = {
-      authors: [pubkey],
-      until: oldestTimestampRef.current - 1,
-      limit: 50,
-    };
+      const filter = { authors: [pubkey], until: cursor - 1, limit: 50 };
+      if (key !== 'all') filter.kinds = CATEGORY_KINDS_MAP[key];
 
-    const { events: newItems } = await queryRelays(relays, filter, { subPrefix: 'more' });
+      const { events: newItems, ok } = await queryRelays(relays, filter, { subPrefix: 'more' });
 
-    if (newItems.length === 0) {
-      setHasMore(false);
-    } else {
-      processNewEvents(newItems);
-    }
+      if (newItems.length > 0) {
+        processNewEvents(newItems, key);
+      } else if (ok) {
+        // Only a relay-confirmed empty page means we reached the end.
+        setExhausted((prev) => new Set(prev).add(key));
+      }
 
-    setIsLoadingMore(false);
-  }, [isLoadingMore, hasMore, pubkey, relays, processNewEvents]);
+      setIsLoadingMore(false);
+    },
+    [isLoadingMore, exhausted, pubkey, relays, processNewEvents]
+  );
 
   // Fetch Category Specifically
   const fetchCategoryEvents = useCallback(
@@ -216,10 +220,16 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
 
       const { events: incoming } = await queryRelays(relays, filter, { subPrefix: 'cat' });
       if (incoming.length > 0) {
-        processNewEvents(incoming);
+        processNewEvents(incoming, category);
       }
     },
     [pubkey, relays, processNewEvents]
+  );
+
+  /** Whether the paging query used for `category` can still return older events. */
+  const hasMoreFor = useCallback(
+    (category = 'all') => !exhausted.has(cursorsRef.current.has(category) ? category : 'all'),
+    [exhausted]
   );
 
   // Calculate live category counts
@@ -237,7 +247,7 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
     eventMap,
     isLoading,
     isLoadingMore,
-    hasMore,
+    hasMoreFor,
     categoryCounts,
     loadOlderEvents,
     fetchCategoryEvents,

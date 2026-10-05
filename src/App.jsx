@@ -28,11 +28,12 @@ export function App() {
     eventMap,
     isLoading,
     isLoadingMore,
-    hasMore,
+    hasMoreFor,
     categoryCounts,
     loadOlderEvents,
     fetchCategoryEvents,
   } = useNostrFeed(DEFAULT_PUBKEY, DEFAULT_RELAYS, requestProfiles);
+  const hasMore = hasMoreFor(activeCategory);
 
   // Parse Initial URL (Path & Query)
   useEffect(() => {
@@ -97,7 +98,7 @@ export function App() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && !isLoadingMore && hasMore) {
-          loadOlderEvents();
+          loadOlderEvents(activeCategory);
         }
       },
       { rootMargin: '400px' }
@@ -105,7 +106,7 @@ export function App() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [singlePostId, isLoading, isLoadingMore, hasMore, loadOlderEvents]);
+  }, [singlePostId, isLoading, isLoadingMore, hasMore, activeCategory, loadOlderEvents]);
 
   // Filtered Events List
   const visibleEvents = useMemo(() => {
