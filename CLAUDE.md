@@ -90,7 +90,7 @@ npx vitest run test/kinds.spec.js
 npx vitest run test/components.spec.jsx -t "partial test name"
 ```
 
-Vitest runs under jsdom with globals enabled (config in `vitest.config.js`; `vite.config.js` has a duplicate `test` block — keep them in sync).
+Vitest runs under jsdom with globals enabled (config in `vitest.config.js`). Hook/component tests use `test/helpers/mockWebSocket.js`; specs that sign real events need `// @vitest-environment node` (noble crypto rejects jsdom Uint8Arrays). CI (`.github/workflows/ci.yml`) runs tests and the build.
 
 ## Configuration (wrangler.jsonc)
 

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev start test test-watch deploy tail types clean
+.PHONY: help install dev start build test test-watch deploy tail types clean
 
 help: ## Show this help message with available commands
 	@echo "Available commands:"
@@ -18,7 +18,7 @@ test: ## Run test suite once
 	npx vitest run
 
 test-watch: ## Run test suite in watch mode
-	npm run test
+	npm run test:watch
 
 build: ## Build frontend assets
 	npm run build
@@ -33,4 +33,4 @@ types: ## Generate Cloudflare Worker TypeScript/env types
 	npx wrangler types
 
 clean: ## Clean local build artifacts and cache
-	rm -rf .wrangler
+	rm -rf .wrangler dist
