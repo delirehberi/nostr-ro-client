@@ -76,6 +76,8 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 make help              # list all available make commands
 make dev               # local dev server (vite)
 make build             # build production bundle (vite build)
+make lint              # eslint (also runs in CI)
+make format            # prettier --write (reformats files; style is not enforced in CI)
 make test              # run full test suite (vitest run)
 make test-watch        # run test suite in watch mode
 make deploy            # build and deploy to Cloudflare
@@ -83,7 +85,7 @@ make tail              # tail live worker logs
 make clean             # clean local build/cache artifacts (only removes .wrangler)
 ```
 
-Run a single test file or test name (there is no linter/formatter script; `.prettierrc` and `.editorconfig` define style):
+Run a single test file or test name (code style per `.prettierrc`/`.editorconfig`: 2 spaces, single quotes):
 
 ```bash
 npx vitest run test/kinds.spec.js

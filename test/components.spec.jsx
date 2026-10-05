@@ -13,7 +13,6 @@ import { GitEventComponent } from '../src/components/GitEventComponent.jsx';
 import { AppHandlerComponent } from '../src/components/AppHandlerComponent.jsx';
 import { SnippetComponent } from '../src/components/SnippetComponent.jsx';
 import { ReactionComponent } from '../src/components/ReactionComponent.jsx';
-import { QuotedEventCard } from '../src/components/QuotedEventCard.jsx';
 import { EventCard } from '../src/components/EventCard.jsx';
 import { FilterBar } from '../src/components/FilterBar.jsx';
 import { RatingStars } from '../src/components/RatingStars.jsx';

@@ -4,7 +4,7 @@
  */
 
 const HEX_COLOR_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-const SAFE_FONT_FAMILY_REGEX = /^[a-zA-Z0-9\s\-]+$/;
+const SAFE_FONT_FAMILY_REGEX = /^[a-zA-Z0-9\s-]+$/;
 const SAFE_URL_REGEX = /^https?:\/\/[^\s"'`<>]+$/;
 
 /**

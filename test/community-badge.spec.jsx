@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { CommunityBadge, COMMUNITY_LANGUAGES } from '../src/components/CommunityBadge.jsx';
+import { CommunityBadge } from '../src/components/CommunityBadge.jsx';
 
 describe('CommunityBadge Component Suite', () => {
   beforeEach(() => {

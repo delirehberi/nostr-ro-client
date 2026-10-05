@@ -7,7 +7,6 @@ export function FilterBar({
   activeSub = 'all',
   onSelectCategory,
 }) {
-  const activeCategoryConfig = CATEGORIES_CONFIG.find((c) => c.id === activeCategory);
 
   return (
     <nav className="filter-container" aria-label="Nostr categories">

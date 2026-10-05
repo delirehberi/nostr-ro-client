@@ -22,7 +22,6 @@ export function GitEventComponent({ event, profileMap, eventMap }) {
   const isRepoState = event.kind === 30618;
   const isPullRequest = event.kind === 1618;
   const isIssue = event.kind === 1621;
-  const isPatch = event.kind === 1617;
 
   return (
     <>

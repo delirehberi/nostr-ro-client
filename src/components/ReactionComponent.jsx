@@ -1,5 +1,4 @@
 import React from 'react';
-import { nip19 } from 'nostr-tools';
 import { extractEventMetadata, encodeNaddr } from '../kinds.js';
 import { ProfileAvatar } from './ProfileAvatar.jsx';
 import { QuotedEventCard } from './QuotedEventCard.jsx';

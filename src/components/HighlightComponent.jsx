@@ -9,7 +9,7 @@ export function HighlightComponent({ event }) {
   return (
     <>
       <div className="card-badge highlight-badge">💡 Highlight</div>
-      <blockquote className="highlight-quote">"{event.content}"</blockquote>
+      <blockquote className="highlight-quote">&quot;{event.content}&quot;</blockquote>
       <div className="post-meta">
         <span>{new Date(event.created_at * 1000).toLocaleDateString()}</span>
         {sourceUrl && (

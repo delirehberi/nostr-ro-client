@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev start build test test-watch deploy tail types clean
+.PHONY: help install dev start build lint format test test-watch deploy tail types clean
 
 help: ## Show this help message with available commands
 	@echo "Available commands:"
@@ -13,6 +13,12 @@ dev: ## Start local development server
 	npm run dev
 
 start: dev ## Alias for dev
+
+lint: ## Lint the codebase with ESLint
+	npm run lint
+
+format: ## Format the codebase with Prettier (rewrites files)
+	npm run format
 
 test: ## Run test suite once
 	npx vitest run
