@@ -33,8 +33,7 @@ function withHeaders(response, pathname) {
   headers.set('Cache-Control', isHashedAsset ? IMMUTABLE_CACHE : REVALIDATE_CACHE);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Report-only until verified against the live page, so a missing host cannot break the site.
-  headers.set('Content-Security-Policy-Report-Only', CSP);
+  headers.set('Content-Security-Policy', CSP);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
