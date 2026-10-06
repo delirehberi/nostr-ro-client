@@ -49,7 +49,8 @@ describe('React Component Suite', () => {
 
       render(<SimpleTextPostComponent event={event} profileMap={profileMap} />);
       expect(screen.getByText('Emre Yilmaz')).toBeDefined();
-      expect(screen.getByText('delirehberi@emre.xyz')).toBeDefined();
+      // A NIP-05 claim is not shown until the Worker verifies it (see nip05.spec.jsx).
+      expect(screen.queryByText(/delirehberi@emre.xyz/)).toBeNull();
       expect(screen.getByText('Hello Nostr from React!')).toBeDefined();
       expect(screen.getByText('share')).toBeDefined();
       expect(screen.getByText('relay link')).toBeDefined();

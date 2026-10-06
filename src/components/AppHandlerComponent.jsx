@@ -2,11 +2,13 @@ import React from 'react';
 import { extractEventMetadata, getKindLabel } from '../kinds.js';
 import { ProfileAvatar } from './ProfileAvatar.jsx';
 import { safeHttpUrl } from '../safeUrl.js';
+import { useNip05 } from '../hooks/useNip05.js';
 
 export function AppHandlerComponent({ event, profileMap }) {
   const meta = extractEventMetadata(event);
   const appCtx = meta.appHandlerContext || {};
   const kindBadge = getKindLabel(event.kind);
+  const nip05Verified = useNip05(appCtx.nip05, event.pubkey);
 
   return (
     <>
@@ -33,7 +35,7 @@ export function AppHandlerComponent({ event, profileMap }) {
 
         <div className="app-info-wrap">
           <h3 className="app-title">{appCtx.name}</h3>
-          {appCtx.nip05 && <div className="app-nip05-badge">✓ {appCtx.nip05}</div>}
+          {nip05Verified && <div className="app-nip05-badge">✓ {appCtx.nip05}</div>}
           {appCtx.about && <p className="app-about">{appCtx.about}</p>}
         </div>
       </div>

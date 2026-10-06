@@ -1,4 +1,5 @@
 import { DEFAULT_RELAYS } from './relays.js';
+import { NIP05_ENDPOINT, handleNip05 } from './nip05.js';
 
 /**
  * Worker entry: serves the built SPA from static assets and adds caching and
@@ -43,6 +44,9 @@ function withHeaders(response, pathname) {
 
 export default {
   async fetch(request, env) {
+    if (new URL(request.url).pathname === NIP05_ENDPOINT) {
+      return handleNip05(request);
+    }
     if (env && env.ASSETS) {
       const response = await env.ASSETS.fetch(request);
       return withHeaders(response, new URL(request.url).pathname);
