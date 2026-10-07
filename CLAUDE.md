@@ -32,6 +32,7 @@ src/
     useProfiles.js              — Batched Kind 0 profile fetcher & caching
     useTheme.js                 — Kind 16767 / 36767 custom theme loader
     useBookMetadata.js / useMovieMetadata.js — external metadata lookups for cards
+  config.js                     — Owner pubkey and handle (single source of truth)
   relays.js                     — Default relay list (DEFAULT_RELAYS) and relay URL sanitizing/normalizing
   kinds.js                      — Event classification taxonomy and metadata extraction
   theme.js                      — Nostr Kind 16767 & 36767 theme parser & CSS generator
@@ -54,7 +55,7 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 
 - **Almost no backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is enforcing) and serves `GET /api/nip05` (`src/nip05.js`), which verifies NIP-05 identifiers server-side; the UI shows a NIP-05 value only after `useNip05` confirms it. All Nostr work happens in the browser.
 - **Relays** (`src/relays.js`): the client queries relay.damus.io, relay.primal.net, relay.ditto.pub and relay.emre.xyz directly (`DEFAULT_RELAYS`; results are merged and de-duplicated). The Worker's CSP `connect-src` is built from the same list. `src/relayClient.js` speaks NIP-01 over raw `WebSocket`s: `queryRelays` (one-shot REQ until EOSE; chunk ids/authors to 50) and `subscribeRelays` (live subscription with backoff reconnect, used by `useNostrFeed` for new posts). Every event is verified by `eventValidation.js` (signature + must match the filter). `nostr-tools` provides verification and NIP-19.
-- **Data flow**: `App.jsx` hardcodes the owner pubkey and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes; the feed shows only the newest version of replaceable/addressable events (`eventAddress` in `kinds.js`) and hides events removed by the owner's NIP-09 kind 5 deletions; paging cursors come from `nextPageCursor` so relays returning different time ranges don't cause skipped posts), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
+- **Data flow**: `App.jsx` uses the owner pubkey from `src/config.js` and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes; the feed shows only the newest version of replaceable/addressable events (`eventAddress` in `kinds.js`) and hides events removed by the owner's NIP-09 kind 5 deletions; paging cursors come from `nextPageCursor` so relays returning different time ranges don't cause skipped posts), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
 - **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` in `useNostrFeed.js` maps categories to relay kind filters. Adding a kind/category usually means touching `classifyEvent`, `CATEGORIES_CONFIG`, `CATEGORY_KINDS_MAP`, and `EventCard`, plus a case in `test/kinds.spec.js`.
 - **URL state**: `App.jsx` syncs `?kind=&sub=` (and a single-post view) with `history.pushState`/`popstate`; no router library.
 - `todo.md` is an unrelated, stale Haskell/Miso prompt — ignore it.
@@ -99,4 +100,4 @@ Vitest runs under jsdom with globals enabled (config in `vitest.config.js`). Hoo
 - Worker name: `nostr`
 - Route: `nostr.emre.xyz` (zone: `emre.xyz`)
 - Static assets directory: `./dist` (with SPA fallback)
-- Vars: `HANDLE=delirehberi@emre.xyz`, `PUBKEY=46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a`
+- No Worker vars: the owner pubkey/handle live in `src/config.js` (the only place to change the owner).

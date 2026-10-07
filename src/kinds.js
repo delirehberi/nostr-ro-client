@@ -11,6 +11,7 @@
  */
 
 import { nip19 } from 'nostr-tools';
+import { OWNER_PUBKEY } from './config.js';
 
 /**
  * Encode addressable pointer (NIP-19 naddr)
@@ -367,8 +368,6 @@ export function isNewerVersion(a, b) {
   if (a.created_at !== b.created_at) return a.created_at > b.created_at;
   return a.id < b.id;
 }
-
-export const OWNER_PUBKEY = '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a';
 
 /**
  * Classify a Nostr event into main category and sub-category
