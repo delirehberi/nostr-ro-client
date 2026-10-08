@@ -43,6 +43,7 @@ src/
   App.jsx                       — Top-level SPA layout and URL state router
   main.jsx                      — React 19 root mount
   index.js                      — Cloudflare Worker static asset handler (cache + security headers)
+  nip05.js / preview.js         — Worker-side NIP-05 verification endpoint and /p/<id> link-preview injection
 test/
   components.spec.jsx           — Component unit and integration tests
   kinds.spec.js                 — Classification & metadata extraction tests
@@ -56,7 +57,7 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 
 ## Architecture
 
-- **Almost no backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is enforcing) and serves `GET /api/nip05` (`src/nip05.js`), which verifies NIP-05 identifiers server-side; the UI shows a NIP-05 value only after `useNip05` confirms it. All Nostr work happens in the browser.
+- **Almost no backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is enforcing) and serves `GET /api/nip05` (`src/nip05.js`), which verifies NIP-05 identifiers server-side; the UI shows a NIP-05 value only after `useNip05` confirms it. For `GET /p/<id>` it also looks the post up on the relays (`src/preview.js`, owner's signed events only, 2 s timeout) and injects Open Graph/Twitter tags into index.html for link previews, falling back to the plain page on any failure. All other Nostr work happens in the browser.
 - **Relays** (`src/relays.js`): the client queries relay.damus.io, relay.primal.net, relay.ditto.pub and relay.emre.xyz directly (`DEFAULT_RELAYS`; results are merged and de-duplicated). The Worker's CSP `connect-src` is built from the same list. `src/relayClient.js` speaks NIP-01 over raw `WebSocket`s: `queryRelays` (one-shot REQ until EOSE; chunk ids/authors to 50) and `subscribeRelays` (live subscription with backoff reconnect, used by `useNostrFeed` for new posts). Every event is verified by `eventValidation.js` (signature + must match the filter). `nostr-tools` provides verification and NIP-19.
 - **Data flow**: `App.jsx` uses the owner pubkey from `src/config.js` and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes; the feed shows only the newest version of replaceable/addressable events (`eventAddress` in `kinds.js`) and hides events removed by the owner's NIP-09 kind 5 deletions; paging cursors come from `nextPageCursor` so relays returning different time ranges don't cause skipped posts), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
 - **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` (both in `kinds/categories.js`) maps categories to relay kind filters. Adding a kind/category usually means touching `kinds/classify.js`, `kinds/categories.js`, a builder in `kinds/context/` or `kinds/metadata.js`, and `EventCard`, plus a case in `test/kinds.spec.js`.
@@ -102,5 +103,5 @@ Vitest runs under jsdom with globals enabled (config in `vitest.config.js`). Hoo
 
 - Worker name: `nostr`
 - Route: `nostr.emre.xyz` (zone: `emre.xyz`)
-- Static assets directory: `./dist` (with SPA fallback)
+- Static assets directory: `./dist` (with SPA fallback), exposed to the Worker as `env.ASSETS` with `run_worker_first: true` so the Worker sees every request (headers, `/api/nip05`, `/p/<id>` previews). Wrangler 4.19 only accepts a boolean there, not a path list.
 - No Worker vars: the owner pubkey/handle live in `src/config.js` (the only place to change the owner).

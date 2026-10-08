@@ -37,7 +37,11 @@
 	"assets": {
 		"directory": "./dist",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/api/*"]
+		// The Worker adds the security headers, /api/nip05 and /p/<id> link previews, so it must see every
+		// request (including navigations that would otherwise get index.html straight from the assets layer).
+		// It then reads the assets through env.ASSETS.
+		"binding": "ASSETS",
+		"run_worker_first": true
 	}
 
 	/**
