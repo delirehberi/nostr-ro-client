@@ -1,18 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { nip19 } from 'nostr-tools';
-import { classifyEvent, eventAddress, isNewerVersion } from '../kinds.js';
+import { classifyEvent, eventAddress, isNewerVersion, CATEGORY_KINDS_MAP } from '../kinds.js';
 import { queryRelays, subscribeRelays, chunk, nextPageCursor } from '../relayClient.js';
 import { acceptEvent } from '../eventValidation.js';
-
-const CATEGORY_KINDS_MAP = {
-  books: [30040, 30041, 30001, 30003, 1985],
-  movies: [30001, 30003, 1985, 31922, 31923, 31989],
-  media: [20, 21, 22, 1063, 1],
-  lists: [30000, 30001, 30002, 30003, 30004, 30005, 10000, 10001, 10002, 10003],
-  notes: [1, 6, 16, 1111],
-  articles: [30023, 30024],
-  highlights: [9802],
-};
 
 const MAX_IDS_PER_REQUEST = 50;
 const INITIAL_LIMIT = 100;
