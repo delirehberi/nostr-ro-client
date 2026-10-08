@@ -113,6 +113,27 @@ describe('useNostrFeed', () => {
     expect(result.current.categoryCounts.all).toBe(2);
   });
 
+  it('merges a burst of live events into a single feed rebuild', async () => {
+    const sockets = installMockWebSocket(fakeRelay([ev('old', 100)], []));
+    const seen = new Set();
+    const { result } = renderHook(() => {
+      const feed = useNostrFeed(OWNER, relays);
+      seen.add(feed.events);
+      return feed;
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(sockets.some((ws) => ws.sent[0]?.[2]?.since !== undefined && !ws.closed)).toBe(true));
+    const live = sockets.find((ws) => ws.sent[0][2].since !== undefined && !ws.closed);
+
+    const before = seen.size;
+    // Separate acts: without batching each event would rebuild the feed on its own.
+    act(() => live.emit(['EVENT', live.subId, ev('b1', 201)]));
+    act(() => live.emit(['EVENT', live.subId, ev('b2', 202)]));
+    act(() => live.emit(['EVENT', live.subId, ev('b3', 203)]));
+    await waitFor(() => expect(result.current.events.map((e) => e.id)).toEqual(['b3', 'b2', 'b1', 'old']));
+    expect(seen.size - before).toBe(1);
+  });
+
   it('only marks a query exhausted after a relay-confirmed empty page', async () => {
     const store = [ev('n1', 1000)];
     installMockWebSocket(fakeRelay(store, []));

@@ -18,6 +18,7 @@ const MAX_IDS_PER_REQUEST = 50;
 const INITIAL_LIMIT = 100;
 const PAGE_LIMIT = 50;
 const DELETION_LIMIT = 500;
+const LIVE_BATCH_MS = 50; // merge live events that arrive within this window into one feed rebuild
 
 /**
  * Ids of events hidden by NIP-09 deletion requests (kind 5) found in `events`.
@@ -265,15 +266,32 @@ export function useNostrFeed(pubkey, relays = [], onRequestProfiles) {
       if (e.pubkey === pubkey && e.created_at > newest) newest = e.created_at;
     });
 
-    return subscribeRelays(
+    // Each processNewEvents call rebuilds and re-sorts the whole feed, so a burst of
+    // live events (e.g. a relay replaying after a reconnect) is merged in one call.
+    let buffer = [];
+    let flushTimer = null;
+    const flush = () => {
+      flushTimer = null;
+      const batch = buffer.filter((e) => !eventMapRef.current.has(e.id));
+      buffer = [];
+      if (batch.length > 0) processNewEvents(batch);
+    };
+
+    const unsubscribe = subscribeRelays(
       relays,
       { authors: [pubkey], since: newest || Math.floor(Date.now() / 1000) },
       {
         onEvent: (event) => {
-          if (!eventMapRef.current.has(event.id)) processNewEvents([event]);
+          buffer.push(event);
+          if (!flushTimer) flushTimer = setTimeout(flush, LIVE_BATCH_MS);
         },
       }
     );
+    return () => {
+      unsubscribe();
+      clearTimeout(flushTimer);
+      buffer = [];
+    };
   }, [pubkey, relays, isLoading, processNewEvents]);
 
   /** Re-run the initial fetch after a failure. */

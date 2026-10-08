@@ -369,12 +369,27 @@ export function isNewerVersion(a, b) {
   return a.id < b.id;
 }
 
+// Events are immutable, so classification and metadata are computed once per event object.
+// The results are shared between callers and must be treated as read-only.
+const classifyCache = new WeakMap();
+const metadataCache = new WeakMap(); // event -> Map(baseUrl -> metadata)
+
 /**
  * Classify a Nostr event into main category and sub-category
  * @param {object} event
  * @returns {{ category: string, subCategory: string }}
  */
 export function classifyEvent(event) {
+  if (!event || typeof event !== 'object') return computeClassification(event);
+  let result = classifyCache.get(event);
+  if (!result) {
+    result = computeClassification(event);
+    classifyCache.set(event, result);
+  }
+  return result;
+}
+
+function computeClassification(event) {
   if (!event || typeof event.kind !== 'number') {
     return { category: 'other', subCategory: 'generic' };
   }
@@ -620,6 +635,17 @@ export function extractMedia(event) {
  * @returns {object}
  */
 export function extractEventMetadata(event, baseUrl = 'https://blog.emre.xyz') {
+  if (!event || typeof event !== 'object') return computeMetadata(event, baseUrl);
+  let byBase = metadataCache.get(event);
+  if (!byBase) {
+    byBase = new Map();
+    metadataCache.set(event, byBase);
+  }
+  if (!byBase.has(baseUrl)) byBase.set(baseUrl, computeMetadata(event, baseUrl));
+  return byBase.get(baseUrl);
+}
+
+function computeMetadata(event, baseUrl) {
   if (!event) return {};
 
   const tags = event.tags || [];
