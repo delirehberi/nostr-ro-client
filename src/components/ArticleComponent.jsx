@@ -1,5 +1,6 @@
 import React from 'react';
-import { extractEventMetadata, OWNER_PUBKEY } from '../kinds.js';
+import { extractEventMetadata } from '../kinds.js';
+import { OWNER_PUBKEY } from '../config.js';
 import { ProfileAvatar } from './ProfileAvatar.jsx';
 import { safeHttpUrl } from '../safeUrl.js';
 

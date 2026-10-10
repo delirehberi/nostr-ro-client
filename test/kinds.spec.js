@@ -600,3 +600,23 @@ describe('kinds classification engine', () => {
     });
   });
 });
+
+describe('per-event memoization', () => {
+  const event = { id: 'm1', pubkey: 'a', kind: 1, created_at: 1, tags: [], content: 'hi' };
+
+  it('computes classification once per event object', () => {
+    expect(classifyEvent(event)).toBe(classifyEvent(event));
+    expect(classifyEvent({ ...event })).toEqual(classifyEvent(event));
+  });
+
+  it('caches metadata per event and base URL', () => {
+    expect(extractEventMetadata(event)).toBe(extractEventMetadata(event));
+    expect(extractEventMetadata(event, 'https://example.com')).not.toBe(extractEventMetadata(event));
+    expect(extractEventMetadata(event, 'https://example.com')).toBe(extractEventMetadata(event, 'https://example.com'));
+  });
+
+  it('handles missing events without caching', () => {
+    expect(classifyEvent(null)).toEqual({ category: 'other', subCategory: 'generic' });
+    expect(extractEventMetadata(null)).toEqual({});
+  });
+});

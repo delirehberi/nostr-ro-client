@@ -6,6 +6,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false, // do not publish source maps with the production bundle
   },
 });

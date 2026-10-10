@@ -59,6 +59,34 @@ describe('queryRelays', () => {
     expect(events).toEqual([]);
   });
 
+  it('does not wait for a relay that never answers once another relay sent EOSE', async () => {
+    vi.useFakeTimers();
+    installMockWebSocket((url, filter, ws) => {
+      if (url === 'wss://fast') {
+        ws.emit(['EVENT', ws.subId, ev('fast')]);
+        ws.emit(['EOSE', ws.subId]);
+      } else if (url === 'wss://partial') {
+        ws.emit(['EVENT', ws.subId, ev('partial')]); // sends an event, never EOSE
+      }
+      // wss://dead stays silent
+    });
+    let done = false;
+    const promise = queryRelays(['wss://fast', 'wss://partial', 'wss://dead'], {}, { timeout: 3500, grace: 500, verify: false }).then(
+      (r) => {
+        done = true;
+        return r;
+      }
+    );
+    await vi.advanceTimersByTimeAsync(400);
+    expect(done).toBe(false); // still inside the grace period
+    await vi.advanceTimersByTimeAsync(200);
+    expect(done).toBe(true); // resolved at ~500ms, far before the 3500ms timeout
+    const { events, ok, relays } = await promise;
+    expect(ok).toBe(true);
+    expect(events.map((e) => e.id).sort()).toEqual(['fast', 'partial']);
+    expect(relays.map((r) => r.ok)).toEqual([true, false, false]);
+  });
+
   it('stops when the signal is aborted', async () => {
     installMockWebSocket(() => {});
     const controller = new AbortController();

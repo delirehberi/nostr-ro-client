@@ -32,13 +32,18 @@ src/
     useProfiles.js              — Batched Kind 0 profile fetcher & caching
     useTheme.js                 — Kind 16767 / 36767 custom theme loader
     useBookMetadata.js / useMovieMetadata.js — external metadata lookups for cards
+  config.js                     — Owner pubkey and handle (single source of truth)
   relays.js                     — Default relay list (DEFAULT_RELAYS) and relay URL sanitizing/normalizing
-  kinds.js                      — Event classification taxonomy and metadata extraction
+  kinds.js                      — Thin entry point re-exporting everything in kinds/ (import from here)
+  kinds/                        — categories.js (CATEGORIES_CONFIG, CATEGORY_KINDS_MAP), classify.js (classifyEvent),
+                                  metadata.js (extractEventMetadata), context/*.js (app data/handler, snippet, reaction,
+                                  label, git, quotes builders), tags.js, labels.js, addressing.js, media.js, nip19.js, patterns.js
   theme.js                      — Nostr Kind 16767 & 36767 theme parser & CSS generator
   styles.css                    — CSS custom properties, responsive card styles, dark mode
   App.jsx                       — Top-level SPA layout and URL state router
   main.jsx                      — React 19 root mount
   index.js                      — Cloudflare Worker static asset handler (cache + security headers)
+  nip05.js / preview.js         — Worker-side NIP-05 verification endpoint and /p/<id> link-preview injection
 test/
   components.spec.jsx           — Component unit and integration tests
   kinds.spec.js                 — Classification & metadata extraction tests
@@ -52,10 +57,10 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 
 ## Architecture
 
-- **No backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is report-only). All Nostr work happens in the browser.
+- **Almost no backend logic.** `src/index.js` is a Worker that serves `env.ASSETS` and adds cache/security headers (CSP is enforcing) and serves `GET /api/nip05` (`src/nip05.js`), which verifies NIP-05 identifiers server-side; the UI shows a NIP-05 value only after `useNip05` confirms it. For `GET /p/<id>` it also looks the post up on the relays (`src/preview.js`, owner's signed events only, 2 s timeout) and injects Open Graph/Twitter tags into index.html for link previews, falling back to the plain page on any failure. All other Nostr work happens in the browser.
 - **Relays** (`src/relays.js`): the client queries relay.damus.io, relay.primal.net, relay.ditto.pub and relay.emre.xyz directly (`DEFAULT_RELAYS`; results are merged and de-duplicated). The Worker's CSP `connect-src` is built from the same list. `src/relayClient.js` speaks NIP-01 over raw `WebSocket`s: `queryRelays` (one-shot REQ until EOSE; chunk ids/authors to 50) and `subscribeRelays` (live subscription with backoff reconnect, used by `useNostrFeed` for new posts). Every event is verified by `eventValidation.js` (signature + must match the filter). `nostr-tools` provides verification and NIP-19.
-- **Data flow**: `App.jsx` hardcodes the owner pubkey and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes; the feed shows only the newest version of replaceable/addressable events (`eventAddress` in `kinds.js`) and hides events removed by the owner's NIP-09 kind 5 deletions; paging cursors come from `nextPageCursor` so relays returning different time ranges don't cause skipped posts), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
-- **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` in `useNostrFeed.js` maps categories to relay kind filters. Adding a kind/category usually means touching `classifyEvent`, `CATEGORIES_CONFIG`, `CATEGORY_KINDS_MAP`, and `EventCard`, plus a case in `test/kinds.spec.js`.
+- **Data flow**: `App.jsx` uses the owner pubkey from `src/config.js` and calls `useNostrFeed` (streams events by `authors: [pubkey]`, paginates backwards with `until`, dedupes into an `eventMap`, and fetches missing parent events by id for reply threads/quotes; the feed shows only the newest version of replaceable/addressable events (`eventAddress` in `kinds.js`) and hides events removed by the owner's NIP-09 kind 5 deletions; paging cursors come from `nextPageCursor` so relays returning different time ranges don't cause skipped posts), `useProfiles` (batched Kind 0), and `useTheme` (applies the owner's Kind 16767/36767 theme). `useBookMetadata`/`useMovieMetadata` enrich cards from external APIs.
+- **Classification is the core abstraction**: `kinds.js` `classifyEvent(event)` returns `{category, subCategory}` and drives the FilterBar tabs, feed filtering, and which component `EventCard.jsx` renders (EventCard also special-cases kinds like 7, 31990/31989, 1337, git and snippet events before falling back to category dispatch). `CATEGORIES_CONFIG` defines tabs/sub-filters, and `CATEGORY_KINDS_MAP` (both in `kinds/categories.js`) maps categories to relay kind filters. Adding a kind/category usually means touching `kinds/classify.js`, `kinds/categories.js`, a builder in `kinds/context/` or `kinds/metadata.js`, and `EventCard`, plus a case in `test/kinds.spec.js`.
 - **URL state**: `App.jsx` syncs `?kind=&sub=` (and a single-post view) with `history.pushState`/`popstate`; no router library.
 - `todo.md` is an unrelated, stale Haskell/Miso prompt — ignore it.
 
@@ -69,6 +74,16 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 - **Articles**: Kind 30023 / 30024 with canonical cards linking directly to `https://blog.emre.xyz`.
 - **Highlights**: Kind 9802 quotation cards with source attribution.
 - **Other**: Fallback structured cards with kind badges.
+
+## Third-party scripts (SRI)
+
+`index.html` loads `https://emre.xyz/components/ui.js` and `theme.css` (the shared header/footer) with Subresource Integrity hashes, so a compromised emre.xyz cannot inject code here. The hashes pin exact file contents: **whenever those files change on emre.xyz the header/footer stops loading until the hashes are updated.** Regenerate them with:
+
+```bash
+for f in ui.js theme.css; do printf "$f sha384-"; curl -s https://emre.xyz/components/$f | openssl dgst -sha384 -binary | openssl base64 -A; echo; done
+```
+
+and paste them into the `integrity` attributes in `index.html`. The CSP still allows `https://emre.xyz` for scripts/styles, and SRI covers only these two files, not anything `ui.js` itself imports or fetches. `test/indexHtml.spec.js` checks that the attributes are present.
 
 ## Commands
 
@@ -98,5 +113,5 @@ Vitest runs under jsdom with globals enabled (config in `vitest.config.js`). Hoo
 
 - Worker name: `nostr`
 - Route: `nostr.emre.xyz` (zone: `emre.xyz`)
-- Static assets directory: `./dist` (with SPA fallback)
-- Vars: `HANDLE=delirehberi@emre.xyz`, `PUBKEY=46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a`
+- Static assets directory: `./dist` (with SPA fallback), exposed to the Worker as `env.ASSETS` with `run_worker_first: true` so the Worker sees every request (headers, `/api/nip05`, `/p/<id>` previews). Wrangler 4.19 only accepts a boolean there, not a path list.
+- No Worker vars: the owner pubkey/handle live in `src/config.js` (the only place to change the owner).
