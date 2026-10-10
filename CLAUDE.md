@@ -75,6 +75,16 @@ wrangler.jsonc                  — Cloudflare Worker configuration with SPA sta
 - **Highlights**: Kind 9802 quotation cards with source attribution.
 - **Other**: Fallback structured cards with kind badges.
 
+## Third-party scripts (SRI)
+
+`index.html` loads `https://emre.xyz/components/ui.js` and `theme.css` (the shared header/footer) with Subresource Integrity hashes, so a compromised emre.xyz cannot inject code here. The hashes pin exact file contents: **whenever those files change on emre.xyz the header/footer stops loading until the hashes are updated.** Regenerate them with:
+
+```bash
+for f in ui.js theme.css; do printf "$f sha384-"; curl -s https://emre.xyz/components/$f | openssl dgst -sha384 -binary | openssl base64 -A; echo; done
+```
+
+and paste them into the `integrity` attributes in `index.html`. The CSP still allows `https://emre.xyz` for scripts/styles, and SRI covers only these two files, not anything `ui.js` itself imports or fetches. `test/indexHtml.spec.js` checks that the attributes are present.
+
 ## Commands
 
 ```bash
