@@ -8,9 +8,9 @@ import { useProfiles } from './hooks/useProfiles.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useNostrFeed } from './hooks/useNostrFeed.js';
 import { getDefaultRelays } from './relays.js';
+import { OWNER_PUBKEY } from './config.js';
 import { parseLocation, buildFeedUrl } from './urlState.js';
 
-const DEFAULT_PUBKEY = '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a';
 const DEFAULT_RELAYS = getDefaultRelays();
 
 export function App() {
@@ -23,7 +23,7 @@ export function App() {
   const fetchedCategoriesRef = useRef(new Set(['notes']));
 
   const { profileMap, requestProfiles } = useProfiles(DEFAULT_RELAYS);
-  useTheme(DEFAULT_PUBKEY, DEFAULT_RELAYS);
+  useTheme(OWNER_PUBKEY, DEFAULT_RELAYS);
 
   const {
     events,
@@ -37,7 +37,7 @@ export function App() {
     loadOlderEvents,
     fetchCategoryEvents,
     fetchEvent,
-  } = useNostrFeed(DEFAULT_PUBKEY, DEFAULT_RELAYS, requestProfiles);
+  } = useNostrFeed(OWNER_PUBKEY, DEFAULT_RELAYS, requestProfiles);
   const hasMore = hasMoreFor(activeCategory);
 
   // Sync state from the URL (initial load and back/forward navigation)

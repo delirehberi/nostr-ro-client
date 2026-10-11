@@ -9,6 +9,8 @@
 import { acceptEvent } from './eventValidation.js';
 
 const DEFAULT_TIMEOUT_MS = 3500;
+// Once one relay has sent EOSE, wait this long for the others before giving up on them.
+const DEFAULT_GRACE_MS = 1000;
 
 /**
  * Split an array into chunks of at most `size` items.
@@ -31,10 +33,10 @@ export function chunk(items, size) {
  *
  * @param {string} relayUrl
  * @param {object} filter
- * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string}} [options]
+ * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string, onEose?: () => void}} [options]
  * @returns {Promise<{events: object[], ok: boolean}>} `ok` is true only when the relay answered with EOSE.
  */
-function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, subPrefix = 'q' } = {}) {
+function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, subPrefix = 'q', onEose } = {}) {
   return new Promise((resolve) => {
     const events = [];
     const subId = `${subPrefix}_${Math.random().toString(36).slice(2, 8)}`;
@@ -79,6 +81,7 @@ function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, su
             events.push(data[2]);
           } else if (data[0] === 'EOSE') {
             ok = true;
+            if (onEose) onEose();
             finish();
           } else if (data[0] === 'CLOSED') {
             finish();
@@ -98,7 +101,10 @@ function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, su
  *
  * @param {string[]} relays
  * @param {object} filter
- * @param {{timeout?: number, signal?: AbortSignal, subPrefix?: string, verify?: boolean, accept?: (event: object) => boolean}} [options]
+ * @param {{timeout?: number, grace?: number, signal?: AbortSignal, subPrefix?: string, verify?: boolean, accept?: (event: object) => boolean}} [options]
+ *   Resolves as soon as every relay has answered, or `grace` ms (default 1000) after the first
+ *   relay's EOSE, so one slow or dead relay cannot hold everything up for the full `timeout`;
+ *   events a cut-off relay had already sent are kept and it is reported with `ok: false`.
  *   By default every event must match the filter's authors/kinds/ids and carry a valid
  *   signature (see `acceptEvent`); pass `verify: false` to skip that. `accept` is an extra predicate.
  * @returns {Promise<{events: object[], ok: boolean, relays: {url: string, ok: boolean, count: number, oldest: number|null}[]}>}
@@ -106,8 +112,29 @@ function queryRelay(relayUrl, filter, { timeout = DEFAULT_TIMEOUT_MS, signal, su
  *   accepted events it sent and the oldest `created_at` among them (used for paging, see `nextPageCursor`).
  */
 export async function queryRelays(relays, filter, options = {}) {
-  const { accept, verify = true, ...rest } = options;
-  const results = await Promise.all(relays.map((url) => queryRelay(url, filter, rest)));
+  const { accept, verify = true, grace = DEFAULT_GRACE_MS, signal, ...rest } = options;
+
+  // Aborting `cutoff` ends every relay still waiting; it fires on the caller's abort or after the grace period.
+  const cutoff = new AbortController();
+  const abortCutoff = () => cutoff.abort();
+  if (signal) {
+    if (signal.aborted) cutoff.abort();
+    else signal.addEventListener('abort', abortCutoff);
+  }
+  let graceTimer = null;
+  const onEose = () => {
+    if (!graceTimer) graceTimer = setTimeout(abortCutoff, grace);
+  };
+
+  let results;
+  try {
+    results = await Promise.all(
+      relays.map((url) => queryRelay(url, filter, { ...rest, signal: cutoff.signal, onEose }))
+    );
+  } finally {
+    clearTimeout(graceTimer);
+    if (signal) signal.removeEventListener('abort', abortCutoff);
+  }
 
   const byId = new Map();
   let ok = false;

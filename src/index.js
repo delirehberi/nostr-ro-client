@@ -1,4 +1,6 @@
 import { DEFAULT_RELAYS } from './relays.js';
+import { NIP05_ENDPOINT, handleNip05 } from './nip05.js';
+import { withPostPreview } from './preview.js';
 
 /**
  * Worker entry: serves the built SPA from static assets and adds caching and
@@ -33,8 +35,7 @@ function withHeaders(response, pathname) {
   headers.set('Cache-Control', isHashedAsset ? IMMUTABLE_CACHE : REVALIDATE_CACHE);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Report-only until verified against the live page, so a missing host cannot break the site.
-  headers.set('Content-Security-Policy-Report-Only', CSP);
+  headers.set('Content-Security-Policy', CSP);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -44,9 +45,16 @@ function withHeaders(response, pathname) {
 
 export default {
   async fetch(request, env) {
+    if (new URL(request.url).pathname === NIP05_ENDPOINT) {
+      return handleNip05(request);
+    }
     if (env && env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
-      return withHeaders(response, new URL(request.url).pathname);
+      const { pathname } = new URL(request.url);
+      let response = await env.ASSETS.fetch(request);
+      if (request.method === 'GET' && pathname.startsWith('/p/')) {
+        response = await withPostPreview(request, response, DEFAULT_RELAYS);
+      }
+      return withHeaders(response, pathname);
     }
     return new Response('Nostr Client SPA', {
       headers: { 'Content-Type': 'text/plain' },

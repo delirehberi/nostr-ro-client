@@ -30,21 +30,18 @@
 	 */
 
 	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 */
-  "vars": {
-      "HANDLE": "delirehberi@emre.xyz" ,
-      "PUBKEY": "46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a"
-  },
-	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 */
 
 	"assets": {
 		"directory": "./dist",
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		// The Worker adds the security headers, /api/nip05 and /p/<id> link previews, so it must see every
+		// request (including navigations that would otherwise get index.html straight from the assets layer).
+		// It then reads the assets through env.ASSETS.
+		"binding": "ASSETS",
+		"run_worker_first": true
 	}
 
 	/**

@@ -1,5 +1,6 @@
 import React from 'react';
 import { safeHttpUrl } from '../safeUrl.js';
+import { useNip05 } from '../hooks/useNip05.js';
 
 export function shortifyNpub(npub) {
   if (!npub || typeof npub !== 'string') return npub || '';
@@ -9,6 +10,7 @@ export function shortifyNpub(npub) {
 
 export function ProfileAvatar({ pubkey, profileMap }) {
   const profile = (profileMap && profileMap.get ? profileMap.get(pubkey) : profileMap?.[pubkey]) || {};
+  const nip05Verified = useNip05(profile.nip05, pubkey);
   const name = profile.display_name || profile.name || shortifyNpub(pubkey);
   const picture = safeHttpUrl(profile.picture) || `https://robohash.org/${pubkey}?set=set5`;
 
@@ -25,7 +27,7 @@ export function ProfileAvatar({ pubkey, profileMap }) {
       />
       <div className="user-meta">
         <span className="user-name">{name}</span>
-        {profile.nip05 && <span className="user-nip05">{profile.nip05}</span>}
+        {nip05Verified && <span className="user-nip05">✓ {profile.nip05}</span>}
       </div>
     </div>
   );

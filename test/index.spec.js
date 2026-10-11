@@ -43,7 +43,8 @@ describe('nostr client worker & static asset handler', () => {
     expect(response.status).toBe(404);
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
-    const csp = response.headers.get('Content-Security-Policy-Report-Only');
+    expect(response.headers.get('Content-Security-Policy-Report-Only')).toBeNull();
+    const csp = response.headers.get('Content-Security-Policy');
     expect(csp).toContain("object-src 'none'");
     ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.ditto.pub', 'wss://relay.emre.xyz'].forEach((r) =>
       expect(csp).toContain(r)
